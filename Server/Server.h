@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 
 #define SERVER_PORT 13000
@@ -60,6 +61,7 @@ struct Contatto{
 Message * deconstruct_Message_String(char * msg);
 int execute_operation(Message * data);
 int numeroDiContatti(FILE * contatti);
+void stampaContatti(char * buffer, int numContatti);
 
 char * listaContatti();
 int inserisciContatto(Message * data);

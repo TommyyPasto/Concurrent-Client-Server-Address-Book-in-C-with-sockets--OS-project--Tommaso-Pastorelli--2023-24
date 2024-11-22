@@ -7,7 +7,7 @@
 int ricercaContatto(FILE * contatti);
 
 int main(){
-    char buffer[200];
+    /* char buffer[200];
     int esito;
     FILE * contatti;
     contatti = fopen("contatti.txt", "r+");
@@ -37,7 +37,26 @@ int main(){
             printf("operazione avvenuta correttamente");
         }
     } */
-       
+    system("clear || cls"); // Pulisce lo schermo (cross-platform)
+    
+    printf("*************************************************\n");
+    printf("*                                               *\n");
+    printf("*          \033[1;34mBENVENUTO NELLA RUBRICA\033[0m              *\n");
+    printf("*                                               *\n");
+    printf("*************************************************\n");
+    printf("\n");
+    printf("  \033[1;32mScegli un'operazione:\033[0m\n");
+    printf("  ---------------------------------------------\n");
+    printf("  \033[1;33m[1]\033[0m Aggiungi un nuovo contatto\n");
+    printf("  \033[1;33m[2]\033[0m Modifica un contatto esistente\n");
+    printf("  \033[1;33m[3]\033[0m Elimina un contatto\n");
+    printf("  \033[1;33m[4]\033[0m Cerca un contatto\n");
+    printf("  \033[1;33m[5]\033[0m Visualizza tutti i contatti\n");
+    printf("  \033[1;33m[0]\033[0m Esci\n");
+    printf("  ---------------------------------------------\n");
+    printf("\n");
+    printf("  \033[1;36mInserisci la tua scelta:\033[0m ");
+
 }
 
 int ricercaContatto(FILE * contatti){
@@ -67,3 +86,30 @@ int numeroDiContatti(FILE * contatti){
     return count;
 }
 
+
+
+
+
+
+
+
+
+
+
+    /* //la funzione ricercaContatto restituisce la posizione di fseek in cui è posizionato il file in caso servisse per qualche utilizzo
+    if(ricercaContatto(contatti, data) != -1){
+        printf("%s!%s!%s\n", data->new_nome, data->new_cognome, data->new_numTelefono);
+        int nCharWritten = fprintf(contatti, "%s %s %s", data->new_nome, data->new_cognome, data->new_numTelefono);
+        
+        // controllo che la lunghezza corrisponda al contenuto mandato dal client
+        if((strlen(data->new_nome)+strlen(data->new_cognome)+strlen(data->new_numTelefono)+2) != nCharWritten || nCharWritten == -1){
+            printf("errore nella fase di scrittura");
+            esito = ERROR_OCCURED;
+        }else{
+            printf("operazione avvenuta correttamente");
+            esito = POSITIVE;
+        }
+    }else{
+        esito = CONTACT_NOT_FOUND;
+    } 
+    fclose(contatti);*/

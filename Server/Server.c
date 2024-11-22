@@ -49,24 +49,29 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Legge i dati inviati dal client
-    int valread = read(new_socket, buffer, BUFFER_SIZE);
-
-    //restituisce i dati formattati sotto forma di struct Message
-    Message * data = deconstruct_Message_String(buffer);
-    
-    if(data->operazione == VISUALIZZAZIONE){
-        FILE * contatti = fopen("contatti.txt","a+");
-        int nContatti = numeroDiContatti(contatti);
-        fclose(contatti);
-        char * lista = listaContatti();
-        int numConvertito = htonl(nContatti);
-        write(new_socket, numConvertito, sizeof(numConvertito));
+    //while(1){
+        // Legge i dati inviati dal client
+        int valread = read(new_socket, buffer, BUFFER_SIZE);
+        if(read == -1){
+            perror("client disconnesso");
+            exit(-1);
+        }
+        //restituisce i dati formattati sotto forma di struct Message
+        Message * data = deconstruct_Message_String(buffer);
         
-    }else{
-        execute_operation(data);
-    }
-
+        if(data->operazione == VISUALIZZAZIONE){
+            FILE * contatti = fopen("contatti.txt","a+");
+            int nContatti = numeroDiContatti(contatti);
+            fclose(contatti);
+            char * lista = listaContatti();
+            int32_t numConvertito = htonl(nContatti);
+            write(new_socket, &numConvertito, sizeof(numConvertito));
+            write(new_socket, lista, (sizeof(char) * nContatti * 53));
+            
+        }else{
+            execute_operation(data);
+        }
+    //}
     // Chiudi la connessione
     close(new_socket);
     close(server_fd);
@@ -83,35 +88,35 @@ Message * deconstruct_Message_String(char * msg){
     char * mesg;
     mesg = &msg[POS_NOME];
     strncpy(data->nome, mesg, 20);
-    printf("%s", data->nome);
+    //printf("%s", data->nome);
 
     mesg = &msg[POS_COGNOME];
     strncpy(data->cognome, mesg, 20);
-    printf("%s", data->cognome);
+    //printf("%s", data->cognome);
 
     mesg = &msg[POS_NUM_TELEFONO];
     strncpy(data->numTelefono, mesg, 10);
-    printf("%s", data->numTelefono);
+    //printf("%s", data->numTelefono);
       
     mesg = &msg[POS_NEW_NOME];
     strncpy(data->new_nome, mesg, 20);
-    printf("%s", data->new_nome);
+    //printf("%s", data->new_nome);
 
     mesg = &msg[POS_NEW_COGNOME];
     strncpy(data->new_cognome, mesg, 20);
-    printf("%s", data->new_cognome);
+    //printf("%s", data->new_cognome);
     
     mesg = &msg[POS_NEW_NUM_TELEFONO];
     strncpy(data->new_numTelefono, mesg, 10);
-    printf("%s", data->new_numTelefono);
+    //printf("%s", data->new_numTelefono);
 
     mesg = &msg[POS_USERNAME];
     strncpy(data->username, mesg, 20);
-    printf("%s", data->username);
+    //printf("%s", data->username);
 
     mesg = &msg[POS_PSW];
     strncpy(data->psw, mesg, 20);
-    printf("%s", data->psw);
+    //printf("%s", data->psw);
     
     return data;
 }
@@ -184,57 +189,122 @@ int inserisciContatto(Message * data){
 
 int modificaContatto(Message * data){
     FILE * contatti;
-    char * buffer;
+    char buffer[53];
     int esito;
-    contatti = fopen("contatti.txt", "a+");
-
-    //la funzione ricercaContatto restituisce la posizione di fseek in cui è posizionato il file in caso servisse per qualche utilizzo
-    if(ricercaContatto(contatti, data) != -1){
-        int nCharWritten = fprintf(contatti, "%s %s %s\n", data->new_nome, data->new_cognome, data->new_numTelefono);
-        // controllo che la lunghezza corrisponda al contenuto mandato dal client
-        if((strlen(data->nome)+strlen(data->cognome)+strlen(data->numTelefono)+3) != nCharWritten || nCharWritten == -1){
-            printf("errore nella fase di scrittura");
-            esito = ERROR_OCCURED;
-        }else{
-            printf("operazione avvenuta correttamente");
-            esito = POSITIVE;
-        }
-    }else{
-        esito = CONTACT_NOT_FOUND;
+    contatti = fopen("contatti.txt", "r+");
+    if(contatti == NULL){
+        contatti = fopen("contatti.txt", "a+");
+        fclose(contatti);
     }
-    fclose(contatti);
-    return esito;
+
+    //ORA CONTROLLO PRIMA SE IL CONTATTO CHE VOGLIO INSERIRE(MODIFICANDO) E' GIA ESISTENTE
+    char nomeTmp[20], cognomeTmp[20], numTmp[10];
+    strcpy(nomeTmp, data->nome);
+    strcpy(cognomeTmp, data->cognome);
+    strcpy(numTmp, data->numTelefono);
+    strcpy(data->nome, data->new_nome);
+    strcpy(data->cognome, data->new_cognome);
+    strcpy(data->numTelefono, data->new_numTelefono);
+    if(ricercaContatto(contatti, data) != -1){
+        esito = ALR_EXISTING_CONTACT;
+        printf("il contatto esiste già");
+        return esito;
+    }else{
+        strcpy(data->nome, nomeTmp);
+        strcpy(data->cognome, cognomeTmp);
+        strcpy(data->numTelefono, numTmp);
+    }
+
+    
+    return riscriviRubrica(contatti, data);
 }
 
 int cancellaContatto(Message * data){
     FILE * contatti;
-    char buffer[53];
-    int esito;
+    //int esito;
     contatti = fopen("contatti.txt", "r+");
     
-    //la funzione ricercaContatto restituisce la posizione di fseek in cui è posizionato il file in caso servisse per qualche utilizzo
-    if(ricercaContatto(contatti, data) != -1){
-        fseek(contatti, 0, SEEK_SET);
-        FILE * copiaContatti;
-        copiaContatti = fopen("temp.txt", "a+");
-        while(fgets(buffer, sizeof(buffer), contatti) != NULL){
-            char * nome, * cognome, * numTelefono;
-            nome = strtok(buffer, " ");
-            cognome = strtok(NULL, " ");
-            numTelefono = strtok(NULL, "\n");
-            printf("%s", nome);
-            if(strcmp(nome, data->nome) != 0 && strcmp(cognome, data->cognome) != 0 && strcmp(numTelefono, data->numTelefono) != 0){
-                fprintf(copiaContatti, "%s %s %s\n", nome, cognome, numTelefono);
-                esito = POSITIVE;
-            }   
-        } 
-        remove("contatti.txt");
-        rename("temp.txt","contatti.txt");
-    }else{
-        esito = CONTACT_NOT_FOUND;
-    }
-    return esito;
+    return riscriviRubrica(contatti, data);
 }
+
+//Funzione utilizzata dalla modifica e dalla cancellazione
+int riscriviRubrica(FILE * contatti, Message * data){
+    int esito;
+    char buffer[53];
+    if(data->operazione == CANCELLAZIONE){
+        if(ricercaContatto(contatti, data) != -1){
+            fseek(contatti, 0, SEEK_SET);
+            FILE * copiaContatti;
+            copiaContatti = fopen("temp.txt", "a+");
+            while(fgets(buffer, sizeof(buffer), contatti) != NULL){
+                char * nome, * cognome, * numTelefono;
+                nome = strtok(buffer, " ");
+                cognome = strtok(NULL, " ");
+                numTelefono = strtok(NULL, "\n");
+                if(strcmp(nome, data->nome) != 0 && strcmp(cognome, data->cognome) != 0 && strcmp(numTelefono, data->numTelefono) != 0){
+                    int nCharWritten = fprintf(copiaContatti, "%s %s %s\n", nome, cognome, numTelefono);
+                    if((strlen(nome)+strlen(cognome)+strlen(numTelefono)+3) != nCharWritten || nCharWritten == -1){
+                        printf("errore nella fase di scrittura");
+                        esito = ERROR_OCCURED;
+                    }else{
+                        printf("operazione avvenuta correttamente");
+                        esito = POSITIVE;
+                    }
+                }   
+            } 
+            fclose(contatti);
+            remove("contatti.txt");
+            fclose(copiaContatti);
+            rename("temp.txt","contatti.txt");
+            
+        }else{
+            esito = CONTACT_NOT_FOUND;
+        }
+        return esito;
+    }else if(data->operazione == MODIFICA){
+        if(ricercaContatto(contatti, data) != -1){
+            fseek(contatti, 0, SEEK_SET);
+            FILE * copiaContatti;
+            copiaContatti = fopen("temp.txt", "a+");
+            while(fgets(buffer, sizeof(buffer), contatti) != NULL){
+                char * nome, * cognome, * numTelefono;
+                nome = strtok(buffer, " ");
+                cognome = strtok(NULL, " ");
+                numTelefono = strtok(NULL, "\n");
+                //controllo ogni ciclo se questa riga contiene o meno il contatto ricercato e in caso stampo il contatto modificato sul file temporaneo
+                if(strcmp(nome, data->nome) == 0 && strcmp(cognome, data->cognome) == 0 && strcmp(numTelefono, data->numTelefono) == 0){
+                    int nCharWritten = fprintf(copiaContatti, "%s %s %s\n", data->new_nome, data->new_cognome, data->new_numTelefono);
+                    if((strlen(data->new_nome)+strlen(data->new_cognome)+strlen(data->new_numTelefono)+3) != nCharWritten || nCharWritten == -1){
+                        printf("errore nella fase di scrittura");
+                        esito = ERROR_OCCURED;
+                    }else{
+                        printf("operazione avvenuta correttamente");
+                        esito = POSITIVE;
+                    }
+                }else{
+                    int nCharWritten = fprintf(copiaContatti, "%s %s %s\n", nome, cognome, numTelefono);
+                    if((strlen(nome)+strlen(cognome)+strlen(numTelefono)+3) != nCharWritten || nCharWritten == -1){
+                        printf("errore nella fase di scrittura");
+                        esito = ERROR_OCCURED;
+                    }else{
+                        printf("operazione avvenuta correttamente");
+                        esito = POSITIVE;
+                    }
+                } 
+            } 
+            fclose(contatti);
+            remove("contatti.txt");
+            fclose(copiaContatti);
+            rename("temp.txt","contatti.txt");
+        
+        }else{
+            esito = CONTACT_NOT_FOUND;
+        }
+    }
+}
+
+
+
 
 
 int ricercaContatto(FILE * contatti, Message * data){

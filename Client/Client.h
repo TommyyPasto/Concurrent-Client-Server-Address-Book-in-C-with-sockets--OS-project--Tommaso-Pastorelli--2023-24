@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include "/home/tommy/ProgettoSO/Utils/ClientUtils.h"
 
 //DATI BASE
@@ -21,7 +22,7 @@
 //NOMI STRINGHE ERRORI
 #define MAX_PMTR_LEN_ERROR "La lunghezza di username o password deve essere INFERIORE a 20 caratteri"
 #define SOCKET_CREATION_ERROR "Si è verificato un ERRORE nella creazione del socket"
-#define CONNECTION_ERROR "CONNESSIONE FALLITA"
+#define CONNECTION_ERROR "CONNESSIONE FALLITA, RIPROVARE? [Y][N or other]"
 #define ALR_EXISTING_CONTACT_ERROR "Il contatto è già presente"
 #define ALR_EXISTING_CONTACT_ERROR "Il contatto è già presente"
 
