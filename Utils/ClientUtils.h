@@ -14,6 +14,9 @@
 
 #define RESET "\x1B[0m"
 
-//int connessione();
+
+void printMhanz();
+
+
 
 

@@ -4,11 +4,14 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include </home/tommy/ProgettoSO/Utils/sha256.h>
+#include <time.h>
 
+#define MAX_USERS_ 10
 
 #define SERVER_PORT 13000
 #define SERVER_ADDRESS "127.0.0.1"
-#define BUFFER_SIZE 141
+#define BUFFER_SIZE 173
 
 //VALORE DI ESITO:
 #define POSITIVE 0
@@ -16,6 +19,11 @@
 #define ALR_EXISTING_CONTACT 1
 #define CONTACT_NOT_FOUND 2
 #define ZERO_CONTACTS_SAVED 3
+#define TRYING_ILLEGAL_ACCESS 4
+#define PASSWORD_NOT_CORRECT 5
+#define USER_NOT_FOUND 6
+#define TOO_MANY_CLIENTS_CONNECTED 7
+
 
 //VALORI NUMERICI DELLE OPERAZIONI
 #define VISUALIZZAZIONE '1'
@@ -36,7 +44,16 @@
 #define POS_NEW_NUM_TELEFONO 91
 #define POS_USERNAME 101
 #define POS_PSW 121
+#define POS_TOKEN 141
 
+#define TOKEN_LENGTH_ 32
+
+typedef char * TOKEN;
+
+/* struct UserSession{
+    struct sockaddr_in userAddr;
+    char token [32];
+}; */
 
 
 typedef struct{
@@ -47,9 +64,9 @@ typedef struct{
     char new_nome[20];
     char new_cognome[20];
     char new_numTelefono[10];
-    char loggato;
     char username[20];
     char psw[20];
+    char token[32];
 }Message;
 
 struct Contatto{
@@ -61,11 +78,22 @@ struct Contatto{
 Message * deconstruct_Message_String(char * msg);
 int execute_operation(Message * data);
 int numeroDiContatti(FILE * contatti);
-void stampaContatti(char * buffer, int numContatti);
+void listContacts(char * buffer, int numContatti);
+unsigned char * convertiInSHA256(char * str, unsigned char * output);
+int ricercaUtente(FILE * contatti, Message * data);
+int ricercaContatto(FILE * contatti, Message * data);
+int riscriviRubrica(FILE * contatti, Message * data);
+
 
 char * listaContatti();
 int inserisciContatto(Message * data);
 int modificaContatto(Message * data);
 int cancellaContatto(Message * data);
+int login(Message * data);
+int checkLoginSession(TOKEN token);
+void gen_token(TOKEN token, size_t length);
+void to_hex(const unsigned char *hash, char *output, size_t length);
+
+
 
 

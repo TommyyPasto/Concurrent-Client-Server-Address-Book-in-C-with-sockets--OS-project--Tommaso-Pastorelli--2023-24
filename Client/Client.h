@@ -6,74 +6,97 @@
 #include <fcntl.h>
 #include "/home/tommy/ProgettoSO/Utils/ClientUtils.h"
 
+
 //DATI BASE
+
 #define SERVER_PORT 13000
 #define SERVER_ADDRESS "127.0.0.1"
-#define BUFFER_SIZE 141
+#define BUFFER_SIZE 173
 
-//VALORE DI ESITO:
+
+//CODICI DI ESITO DAL SERVER:
+
 #define POSITIVE 0
 #define ERROR_OCCURED -1
 #define ALR_EXISTING_CONTACT 1
 #define CONTACT_NOT_FOUND 2
 #define ZERO_CONTACTS_SAVED 3
+#define TRYING_ILLEGAL_ACCESS 4
+#define PASSWORD_NOT_CORRECT 5
+#define USER_NOT_FOUND 6
+#define TOO_MANY_CLIENTS_CONNECTED 7
+
+//STRINGHE DI ESITO DAL SERVER:
+
+#define POSITIVE_STR "OPERATION SUCCESSFUL"
+#define ERROR_OCCURED_STR "ERR_CODE:[-1] -> UNKOWN ERROR OCCURRED "
+#define ALR_EXISTING_CONTACT_STR "ERR_CODE:[1] -> THE CONTACT IS ALREADY PRESENT"
+#define CONTACT_NOT_FOUND_STR "ERR_CODE:[2] -> NO SUCH CONTACT FOUND"
+#define ZERO_CONTACTS_SAVED_STR "ERR_CODE:[3] -> NO CONTACTS PRESENT IN THE ADDRESS BOOK"
+#define TRYING_ILLEGAL_ACCESS_STR "ERR_CODE:[4] -> ILLEGAL ACCESS TRIED (such operation is only for logged clients)"
+#define PASSWORD_NOT_CORRECT_STR "ERR_CODE:[5] -> INCORRECT PASSWORD! try again"
+#define USER_NOT_FOUND_STR "ERR_CODE:[6] -> NO SUCH USER FOUND"
+#define TOO_MANY_CLIENTS_CONNECTED_STR "ERR_CODE:[7] -> NO SUCH USER FOUND"
 
 
-//NOMI STRINGHE ERRORI
-#define MAX_PMTR_LEN_ERROR "La lunghezza di username o password deve essere INFERIORE a 20 caratteri"
-#define SOCKET_CREATION_ERROR "Si è verificato un ERRORE nella creazione del socket"
-#define CONNECTION_ERROR "CONNESSIONE FALLITA, RIPROVARE? [Y][N or other]"
-#define ALR_EXISTING_CONTACT_ERROR "Il contatto è già presente"
-#define ALR_EXISTING_CONTACT_ERROR "Il contatto è già presente"
+//ERRORI LATO CLIENT
+
+#define SOCKET_CREATION_ERROR "an ERROR occurred during sockets creation!"
+#define CONNECTION_ERROR "CONNECTION FAILED, RETRY? [Y][N or other]"
+#define SERVER_DISCONNECTED_ERROR "ERROR: server has stopped running!\nso data was not sent!"
+
 
 
 //VALORI NUMERICI DELLE OPERAZIONI
-#define VISUALIZZAZIONE '1'
-#define INSERIMENTO '2'
-#define MODIFICA '3'
-#define CANCELLAZIONE '4'
+
+#define LISTING '1'
+#define INSERT '2'
+#define EDIT '3'
+#define DELETE '4'
 #define LOGIN '5'
 #define LOGOUT '6'
-#define ESCI '0'
+#define EXIT '0'
+
+#define checkConnessione 'c'
 
 //POSIZIONI NELL'ARRAY DEL MESSAGGIO
-#define POS_OPERAZIONE 0
-#define POS_NOME 1
-#define POS_COGNOME 21
-#define POS_NUM_TELEFONO 41
-#define POS_NEW_NOME 51
-#define POS_NEW_COGNOME 71
-#define POS_NEW_NUM_TELEFONO 91
+
+#define POS_NAME 1
+#define POS_LAST_NAME 21
+#define POS_PHONE_NUM 41
+#define POS_NEW_NAME 51
+#define POS_NEW_LAST_NAME 71
+#define POS_NEW_PHONE_NUM 91
 #define POS_USERNAME 101
 #define POS_PSW 121
+#define POS_TOKEN 141
 
+#define TOKEN_LENGTH_ 32
 
+typedef char * TOKEN;
 
 typedef struct{
-    char operazione;
-    char nome[20];
-    char cognome[20];
-    char numTelefono[10];
-    char new_nome[20];
-    char new_cognome[20];
-    char new_numTelefono[10];
-    char loggato;
-   
+    char operation;
+    char name[20];
+    char lastName[20];
+    char phoneNumber[10];
+    char new_name[20];
+    char new_lastName[20];
+    char new_phoneNumber[10];
     char username[20];
     char psw[20];
 }Message;
 
 
-int logged = 0;
-char logged_string[] = "[✔ Loggato]";
-char notLogged_string[] = "[X NON Loggato!]";
-
-int connect_To_Server();
+int connect_To_Server(char * serverAddress, int serverPort);
+int tryConnection(int sock, struct sockaddr_in * serv_addr);
 Message * choose_operation();
-//int send_Message();
-//int login(int client_Socket, char * username, char * psw);
 void create_Message_String(char messaggio[], Message * data);
 
-int checkSpecialChar(char * string);
+void printOutcome(int outcome);
+
+
+int checkAlphaNumeric(char * string);
 int checkNumber(char * string);
+void listContacts(char * listaContatti, int numContatti);
 
