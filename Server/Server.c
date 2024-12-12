@@ -1,130 +1,184 @@
+/**
+ * File: Server.c
+ * Project: Address Book in C Language
+ *
+ * Description:
+ * This program implements a simple address book application
+ * to manage contacts using the C programming language.
+ *
+ * Author: Tommaso Pastorelli
+ * Student ID: 7119242
+ * Email: tommaso.pastorelli1@edu.unifi.it
+ *
+ * Date Started: [Inserire Data di Inizio]
+ * Date Finished: [Inserire Data di Fine]
+ * Version: 1.0.0
+ *
+ * License: No license
+ * Compiler: GCC (GNU Compiler Collection)
+ *
+ * Compilation Instructions:
+ * compile using the make file
+ *
+ * Notes:
+ * - Ensure GCC is installed on your system.
+ * - Modify the program as needed to meet additional requirements.
+ */
+
+
 #include "Server.h"
 
 
-
-
-
-
+//we keep an array of tokens, specifically there will be 10, the max number of connected client allowed at the same time
 TOKEN * sessionTokens;
 int lastSessionToken = 0;
 
-int main() {
+
+//used for socket set up
+int socketSetUp(int option){
+    int server_fd;
+    
+    // Creation of socket's fd
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    //using option to indicate an optional value for socket options in "setsocketopt"
+    //if SO socket is not closed we reuse it
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
+        perror("Errore in setsockopt");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+    return server_fd;
+}
+
+
+
+//used for binding
+struct sockaddr_in * binding(int socket, int port){
+    struct sockaddr_in * address;
+    address = malloc(sizeof(struct sockaddr_in));
+
+    // Assigning address and port
+    address->sin_family = AF_INET;
+    address->sin_addr.s_addr = INADDR_ANY;
+    address->sin_port = htons(port);
+
+    // binding...
+    if (bind(socket, (struct sockaddr *)address, sizeof(*address)) < 0) {
+        perror("bind failed");
+        close(socket);
+        exit(EXIT_FAILURE);
+    }
+
+    return address;
+}
+
+
+
+//main function
+int main(int argc, char *argv[]) {
+
+    signal(SIGPIPE, SIG_IGN);
+
+    //we allocate memory for all the tokens
     sessionTokens = malloc(MAX_USERS_ * sizeof(TOKEN));
     for(int i = 0; i < MAX_USERS_; i++){
         sessionTokens[i] = malloc(TOKEN_LENGTH_ * sizeof(char) +1);
     } 
 
-    int opt = 1;
-    int server_fd, new_socket;
-    struct sockaddr_in address;
-    int addrlen = sizeof(address);
+    //array for containing data during reading
     char buffer[BUFFER_SIZE] = {0};
 
-    // Creazione del socket file descriptor
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("socket failed");
-        exit(EXIT_FAILURE);
-    }
+    //address var
+    struct sockaddr *address;
 
-    //se la socket di SO non si è ancora chiusa la riusiamo
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
-        perror("Errore in setsockopt");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
+    //server/client sockets fd
+    int server_fd, new_socket;
+    
+    //creating the socket on servers side
+    server_fd = socketSetUp(1);
 
-    // Assegnazione dell'indirizzo e della porta al socket
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(SERVER_PORT);
+    //binding process
+    address = binding(server_fd, SERVER_PORT);
 
-    // Binding del socket al porto definito
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("bind failed");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
+    int addrlen = sizeof(*address);
 
-    // In ascolto di connessioni
+    // Listening
     if (listen(server_fd, MAX_USERS_) < 0) {
         perror("listen failed");
         close(server_fd);
         exit(EXIT_FAILURE);
     }
 
-    printf("Server in ascolto sulla porta %d\n", SERVER_PORT);
+    printf("Server listening on PORT: %d\n", SERVER_PORT);
 
-    // Accetta la connessione in entrata
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+    // Accepting connections
+    if ((new_socket = accept(server_fd, (struct sockaddr *)address, (socklen_t*)&addrlen)) < 0) {
         perror("accept failed");
         close(server_fd);
         exit(EXIT_FAILURE);
     }
 
-     
-
-
+    //waiting for clients requests
     while(1){
-        // Legge i dati inviati dal client
+
+        // reading data from client
         int valread = read(new_socket, buffer, BUFFER_SIZE);
         if(valread == -1){
-            // Chiudi la connessione
+            // closes connection
             close(new_socket);
             close(server_fd);
-            perror("client disconnesso");
+            perror("client disconnected");
             exit(-1);
         }
 
-        //restituisce i dati formattati sotto forma di struct Message
+        // returns buffers data into a proper struct
         Message * data = deconstruct_Message_String(buffer);
         
         // se l'operazione è quella di visualizzazione allora gestisco l'op in modo diverso 
         if(data->operazione == VISUALIZZAZIONE){
-            FILE * contatti = fopen("contatti.txt","a+");
-            int nContatti = numeroDiContatti(contatti);
-            fclose(contatti);
-            char * lista = listaContatti();
-            int32_t numConvertito = htonl(nContatti);
-            write(new_socket, &numConvertito, sizeof(numConvertito));
-            write(new_socket, lista, (sizeof(char) * nContatti * 53));
+            char * contactsList = readContacts();
+            int32_t nContacts_uint = htonl(contactsList[0]);
+            write(new_socket, &nContacts_uint, sizeof(nContacts_uint));
+            write(new_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53));
 
         }else{   
             if(data->operazione != LOGIN){
+
+                // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
                 if(checkLoginSession(data->token) < 0){
-                    int esito = TRYING_ILLEGAL_ACCESS;
-                    int32_t esitoConv = htonl(esito);
-                    write(new_socket, &esitoConv, sizeof(esitoConv));
+                    int outcome = TRYING_ILLEGAL_ACCESS;
+                    int32_t outcome_uint = htonl(outcome);
+                    write(new_socket, &outcome_uint, sizeof(outcome_uint));
                 }else{
-                    int esito = execute_operation(data);
-                    int32_t esitoConv = htonl(esito);
-                    int val = write(new_socket, &esitoConv, sizeof(esitoConv));
+                    int outcome = execute_operation(data);
+                    int32_t outcome_uint = htonl(outcome);
+                    int val = write(new_socket, &outcome_uint, sizeof(outcome_uint));
                 }
             }else{
-                int esito = execute_operation(data);
+                int outcome = execute_operation(data);
                 char * buffer = malloc(33 * sizeof(char));
-                buffer[0] = esito;
-                if(esito == POSITIVE)
+                buffer[0] = outcome;
+                if(outcome == POSITIVE)
                     strncpy((char *)&(buffer[1]), (const char *)sessionTokens[lastSessionToken-1], strlen(sessionTokens[lastSessionToken-1])); 
                 write(new_socket, buffer, 33 * sizeof(char));
             }
         }
     }
-    // Chiudi la connessione
-    close(new_socket);
-    close(server_fd);
-    return 0;
 }
 
 
 
-
-
+//Functions that simply decides which operation to perform based on the "operation" field contained in data
 int execute_operation(Message * data){
     if(data->operazione == INSERIMENTO){
-        return inserisciContatto(data);
+        return insertContact(data);
     }
     else if(data->operazione == MODIFICA){
-        return modificaContatto(data);
+        return editContact(data);
     }
     else if(data->operazione == CANCELLAZIONE){
         return cancellaContatto(data);
@@ -140,162 +194,179 @@ int execute_operation(Message * data){
 }
 
 
-char * listaContatti(){
-    FILE * contatti;
-    contatti = fopen("contatti.txt", "a+");
-    int numContatti = numeroDiContatti(contatti);
-    char * listaContatti = malloc(numContatti * 53 * sizeof(char));
-    int i = 0;
-    char buffer[53];
-    fseek(contatti, 0, SEEK_SET);
 
-    while(fgets(buffer, sizeof(buffer), contatti)){
-        char * str = &listaContatti[i * 53];
+/*Function which reads all contacts contained on the address book file and puts them in an array of size 53*n+2, where n is the number of contacts, 
+and where the 2 additional positions contain outcome of the op. and number of contacts.
+It returns 3(ZERO_CONTACTS_SAVED) or 0(POSITIVE)*/
+char * readContacts(){
+    int nContacts;
+    int outcome;
+    char buffer[53];
+    char * contactsList;
+    FILE * contacts;
+
+    contacts = fopen(CONTACTS_PATH, "a+");
+    contactsList = malloc(2 + nContacts * 53 * sizeof(char));
+
+    nContacts = numberOfContacts(contacts);
+    if(nContacts == 0){
+        contactsList[1] = ZERO_CONTACTS_SAVED;
+        return contactsList;
+    }
+
+    fseek(contacts, 0, SEEK_SET);
+
+    int i = 0;
+    //filling the buffer with the current line data and adding it to "contactsList" array
+    while(fgets(buffer, sizeof(buffer), contacts)){
+        char * str = &contactsList[i * 53 + 2];
         strncpy(str, buffer, 53);
         printf("%s", str);
         i++;
     }
-    return listaContatti;
+
+    contactsList[1] = POSITIVE;
+    contactsList[0] = nContacts;
+    return contactsList;
 }
 
 
-int inserisciContatto(Message * data){
+
+//function that takes a Message struct as input and inserts the contact contained into the address book file
+int insertContact(Message * data){
     
-    FILE * contatti;
-    contatti = fopen("contatti.txt", "a+");
-    int esito;
+    // opening file in append mode
+    FILE * contacts;
+    contacts = fopen(CONTACTS_PATH, "a+");
 
-    int esitoRicerca = ricercaContatto(contatti, data);
-    printf("esito ricerca: %d", esitoRicerca);
-    //controllo che il contatto non esista già
-    if(esitoRicerca < 0){
+    int outcome;
 
-        int nCharWritten = fprintf(contatti, "%s %s %s\n", data->nome, data->cognome, data->numTelefono);
+    // Here, we are checking if the contact is already present in the file before inserting it
+    if(search_And_Set_ContactIndex(contacts, data) < 0){
+
+        int nCharWritten = fprintf(contacts, "%s %s %s\n", data->nome, data->cognome, data->numTelefono);
         
-        // controllo che la lunghezza corrisponda al contenuto mandato dal client
+        // checking that the length of the written data corrisponds to the actual length of the string we wanted to print into the file
         if((strlen(data->nome)+strlen(data->cognome)+strlen(data->numTelefono)+3) != nCharWritten || nCharWritten == -1){
-            printf("errore nella fase di scrittura");
-            esito = ERROR_OCCURED;
+            printf("error during writing phase occurred");
+            outcome = ERROR_OCCURED;
         }else{
-            printf("operazione avvenuta correttamente");
-            esito = POSITIVE;
+            printf("operation successfully completed");
+            outcome = POSITIVE;
         }
     }else{
-        esito = ALR_EXISTING_CONTACT;
+        outcome = ALR_EXISTING_CONTACT;
     }
-    fclose(contatti);
-    return esito;
+    fclose(contacts);
+    return outcome;
 }
 
 
 
-
-int modificaContatto(Message * data){
-    FILE * contatti;
+//function that takes a Message struct as input and edits a contact of the address book
+int editContact(Message * data){
+    FILE * contacts;
     char buffer[53];
-    int esito;
-    contatti = fopen("contatti.txt", "r+");
-    if(contatti == NULL){
-        contatti = fopen("contatti.txt", "a+");
-        fclose(contatti);
+    int outcome;
+
+    contacts = fopen(CONTACTS_PATH, "r+");
+    if(contacts == NULL){
+        contacts = fopen(CONTACTS_PATH, "a+");
+        fclose(contacts);
     }
-    //ORA CONTROLLO PRIMA SE IL CONTATTO CHE VOGLIO INSERIRE(MODIFICANDO) E' GIA ESISTENTE
+
+    //Now we are checking if the after-editing contact is one that already exists in the address book, and if so we stop the operation
     char nomeTmp[20], cognomeTmp[20], numTmp[10];
-    strcpy(nomeTmp, data->nome);
-    strcpy(cognomeTmp, data->cognome);
-    strcpy(numTmp, data->numTelefono);
-    strcpy(data->nome, data->new_nome);
-    strcpy(data->cognome, data->new_cognome);
-    strcpy(data->numTelefono, data->new_numTelefono);
-    if(ricercaContatto(contatti, data) != -1){
-        esito = ALR_EXISTING_CONTACT;
-        printf("il contatto esiste già");
-        return esito;
-    }else{
-        strcpy(data->nome, nomeTmp);
-        strcpy(data->cognome, cognomeTmp);
-        strcpy(data->numTelefono, numTmp);
+    Message dataTemp;
+
+    //copying the data
+    strcpy(dataTemp.nome, data->new_nome);
+    strcpy(dataTemp.cognome, data->new_cognome);
+    strcpy(dataTemp.numTelefono, data->new_numTelefono);
+
+    //checking if its already present
+    if(search_And_Set_ContactIndex(contacts, &dataTemp) != -1){
+        outcome = ALR_EXISTING_CONTACT;
+        printf("contact already exists");
+        return outcome;
     }
-    return riscriviRubrica(contatti, data);
+
+    free(&dataTemp);
+
+    return rewriteAddressBook(contacts, data);
 }
 
 
 
-
-
-
-
+//function that takes a Message struct as input and deletes a contact of the address book
 int cancellaContatto(Message * data){
-    FILE * contatti;
-    //int esito;
-    contatti = fopen("contatti.txt", "r+");
-    
-    int esitoModifica = riscriviRubrica(contatti, data);
-    printf("ESITO canc: %d", esitoModifica);
-    return esitoModifica;
+    FILE * contacts;
+    contacts = fopen(CONTACTS_PATH, "r+");
+    return rewriteAddressBook(contacts, data);;
 }
 
 
 
-
-
-
-
+/*function which cheks wheter the username and password data sent by the client are correspondent to a certain user account
+and in case creates and sends back to the client a uniquely identified session token*/
 int login(Message * data){
-    /*FILE * utenti = fopen("utenti.txt", "r+");
-    fclose(utenti);*/
-    int esitoLogin;
-      
+    int loginOutcome;
     char buffer[100];
-   
-    FILE * utenti = fopen("utenti.txt", "r+");
+    FILE * users = fopen(USERS_PATH, "r+");
     
-    if(ricercaUtente(utenti, data) != -1){
-        fseek(utenti, 0, SEEK_SET);
-    
-        char * nomeUtente;
+    //checks if the user is present in the users file
+    if(search_And_Set_UserIndex(users, data) != -1){
+        fseek(users, 0, SEEK_CUR);
+
+
+        //Variables used just for checking if the psw contained in the file is the same as the one sent by the user after hashing
         char * pswSHA256hex;
+
+        //variables for converting data
+        unsigned char * hash;
+        char * convertedPsw;
         
-        fgets(buffer, sizeof(buffer), utenti);
-        nomeUtente = strtok(buffer, " ");
+        fgets(buffer, sizeof(buffer), users);
+        strtok(buffer, " ");
         pswSHA256hex = strtok(NULL, "\n");
         
-        unsigned char * hash = malloc(SHA256_BLOCK_SIZE * sizeof(unsigned char));
-        convertiInSHA256(data->psw, hash);
+        //takes space to contain the hashed(sha256) password
+        hash = malloc(SHA256_BLOCK_SIZE * sizeof(unsigned char));
+        convertToSHA256(data->psw, hash);
         
-        char * pswConvertita = malloc(1 + sizeof(unsigned char) * SHA256_BLOCK_SIZE * 2);
-        to_hex(hash, pswConvertita, SHA256_BLOCK_SIZE);
+        //takes space to contain the hex(ed) password 
+        convertedPsw = malloc(1 + sizeof(unsigned char) * SHA256_BLOCK_SIZE * 2);
+        to_hex(hash, convertedPsw, SHA256_BLOCK_SIZE);
         
-        printf("stringhe: %s | %s\n", pswSHA256hex, pswConvertita);
-    
-        if(strcmp(pswSHA256hex, pswConvertita) == 0){
-            printf("ESITO LOGIN POSITIVO");
-            if(lastSessionToken < 9){
-                //Inserisco il token di sessione nell'array relativo
+        if(strcmp(pswSHA256hex, convertedPsw) == 0){
+            printf("POSITIVE LOGIN");
+            if(lastSessionToken < (MAX_USERS_-1)){
+                
+                //insrting the new session token into the array after checking wheter we have a limit of max logged users
                 TOKEN str = malloc(32 * sizeof(char));
                 gen_token(sessionTokens[lastSessionToken], TOKEN_LENGTH_);
                 lastSessionToken++;
-                esitoLogin = POSITIVE;
-            }else{
-                esitoLogin = TOO_MANY_CLIENTS_CONNECTED;
-            } 
+                loginOutcome = POSITIVE;
 
+            }else{
+                printf("\nTOO MANY CLIENTS CONNECTED\n\n");
+                loginOutcome = TOO_MANY_CLIENTS_CONNECTED;
+            } 
             
         }else{
-            printf("\nESITO LOGIN NEGATIVO1\n\n");
-            esitoLogin = PASSWORD_NOT_CORRECT;
+            printf("\nPASSWORD NOT CORRECT\n\n");
+            loginOutcome = PASSWORD_NOT_CORRECT;
         } 
     }else{
-        printf("\nESITO LOGIN NEGATIVO2\n\n");
-        esitoLogin = USER_NOT_FOUND;
+        printf("\nSUER NOT FOUND\n\n");
+        loginOutcome = USER_NOT_FOUND;
     }
-    return esitoLogin;  
+    return loginOutcome;  
 }
 
 
 
-
-
+//function that checks login session, serves only a security purpose
 int checkLoginSession(TOKEN token){
     for(int i = 0; i < lastSessionToken; i++){
         if(strcmp(token, sessionTokens[i]) == 0){
@@ -307,7 +378,7 @@ int checkLoginSession(TOKEN token){
 
 
 
-
+//function for logging out. takes the session token as input
 void logout(TOKEN token){
     for(int i = 0; i < lastSessionToken; i++){
         if(strcmp(token, sessionTokens[i]) == 0){
@@ -321,91 +392,81 @@ void logout(TOKEN token){
 
 
 
-
+//simple function that builds a Message struct variable using clients message array data
 Message * deconstruct_Message_String(char * msg){
     Message * data  = malloc(sizeof (Message));
     data->operazione = msg[0];
     char * mesg;
     mesg = &msg[POS_NOME];
     strncpy(data->nome, mesg, 20);
-    //printf("%s", data->nome);
-
+    
     mesg = &msg[POS_COGNOME];
     strncpy(data->cognome, mesg, 20);
-    //printf("%s", data->cognome);
-
+   
     mesg = &msg[POS_NUM_TELEFONO];
     strncpy(data->numTelefono, mesg, 10);
-    //printf("%s", data->numTelefono);
-      
+    
     mesg = &msg[POS_NEW_NOME];
     strncpy(data->new_nome, mesg, 20);
-    //printf("%s", data->new_nome);
-
+    
     mesg = &msg[POS_NEW_COGNOME];
     strncpy(data->new_cognome, mesg, 20);
-    //printf("%s", data->new_cognome);
     
     mesg = &msg[POS_NEW_NUM_TELEFONO];
     strncpy(data->new_numTelefono, mesg, 10);
-    //printf("%s", data->new_numTelefono);
-
+    
     mesg = &msg[POS_USERNAME];
     strncpy(data->username, mesg, 20);
-    //printf("%s", data->username);
-
+    
     mesg = &msg[POS_PSW];
     strncpy(data->psw, mesg, 20);
-    //printf("%s", data->psw);
-
+    
     mesg = &msg[POS_TOKEN];
     strncpy(data->token, mesg, 32);
-    //printf("%s", data->token);
     
     return data;
 }
 
 
 
-
-int ricercaUtente(FILE * utenti, Message * data){
+//after passing an already opened file, this function searches for a user in the users file and returns the outcome of the fseek operation
+int search_And_Set_UserIndex(FILE * users, Message * data){
     char buffer[54];
-    fseek(utenti, 0, SEEK_SET);
-    while(fgets(buffer, sizeof(buffer), utenti) != NULL){
-        char * nomeUtente;
-        nomeUtente = strtok(buffer, " ");
-        if(strcmp(nomeUtente, data->username) == 0)
-            return fseek(utenti, -(strlen(nomeUtente) + 34), SEEK_CUR);
+    fseek(users, 0, SEEK_SET);
+    while(fgets(buffer, sizeof(buffer), users) != NULL){
+        char * username;
+        username = strtok(buffer, " ");
+        if(strcmp(username, data->username) == 0)
+            return fseek(users, -(strlen(username) + 34), SEEK_CUR);
     }
     return -1;
 }
 
 
 
-
-int ricercaContatto(FILE * contatti, Message * data){
+//after passing an already opened file, this function searches for a contact in the address book file and returns the outcome of the fseek operation
+int search_And_Set_ContactIndex(FILE * contacts, Message * data){
     char buffer[53];
-    fseek(contatti, 0, SEEK_SET);
-    while(fgets(buffer, sizeof(buffer), contatti) != NULL){
+    fseek(contacts, 0, SEEK_SET);
+    while(fgets(buffer, sizeof(buffer), contacts) != NULL){
         char * nome, * cognome, * numTelefono;
         nome = strtok(buffer, " ");
         cognome = strtok(NULL, " ");
         numTelefono = strtok(NULL, "\n");
         if(strcmp(nome, data->nome) == 0 && strcmp(cognome, data->cognome) == 0 && strcmp(numTelefono, data->numTelefono) == 0)
-            return fseek(contatti, -(strlen(nome)+strlen(cognome)+strlen(numTelefono)+3), SEEK_CUR);
+            return fseek(contacts, -(strlen(nome)+strlen(cognome)+strlen(numTelefono)+3), SEEK_CUR);
     }
     return -1;
 }
 
 
 
-
-
-int numeroDiContatti(FILE * contatti){
+//after passing an already opened file, this function counts the number of Contacts in the address book file
+int numberOfContacts(FILE * contacts){
     char buffer[53];
     int count = 0;
-    fseek(contatti, 0, SEEK_SET);
-    for (char c = getc(contatti); c != EOF; c = getc(contatti))
+    fseek(contacts, 0, SEEK_SET);
+    for (char c = getc(contacts); c != EOF; c = getc(contacts))
         if (c == '\n') // Increment count if this character is newline
             count = count + 1;
 
@@ -413,86 +474,100 @@ int numeroDiContatti(FILE * contatti){
 }
 
 
+
 //Funzione utilizzata dalla modifica e dalla cancellazione
-int riscriviRubrica(FILE * contatti, Message * data){
-    int esito;
+int rewriteAddressBook(FILE * contacts, Message * data){
+    int outcome;
     char buffer[53];
     if(data->operazione == CANCELLAZIONE){
-        if(ricercaContatto(contatti, data) != -1){
-            fseek(contatti, 0, SEEK_SET);
-            FILE * copiaContatti;
-            copiaContatti = fopen("temp.txt", "a+");
-            while(fgets(buffer, sizeof(buffer), contatti) != NULL){
-                char * nome, * cognome, * numTelefono;
-                nome = strtok(buffer, " ");
-                cognome = strtok(NULL, " ");
-                numTelefono = strtok(NULL, "\n");
+        if(search_And_Set_ContactIndex(contacts, data) != -1){
+            fseek(contacts, 0, SEEK_SET);
 
-                if(strcmp(nome, data->nome) != 0 && strcmp(cognome, data->cognome) != 0 && strcmp(numTelefono, data->numTelefono) != 0){
-                    int nCharWritten = fprintf(copiaContatti, "%s %s %s\n", nome, cognome, numTelefono);
-                    if((strlen(nome)+strlen(cognome)+strlen(numTelefono)+3) != nCharWritten || nCharWritten == -1){
+            //we create a temp file for containing the already existing data except the one deleted, and then we rename the file
+            FILE * tmpFile;
+            tmpFile = fopen("temp.txt", "a+");
+            while(fgets(buffer, sizeof(buffer), contacts) != NULL){
+                char * name, * lastName, * phoneNumber;
+                name = strtok(buffer, " ");
+                lastName = strtok(NULL, " ");
+                phoneNumber = strtok(NULL, "\n");
+                
+                //if the contact is not the same we can write it down also in the new file
+                if(strcmp(name, data->nome) != 0 && strcmp(lastName, data->cognome) != 0 && strcmp(phoneNumber, data->numTelefono) != 0){
+                    int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
+                    if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
                         printf("errore nella fase di scrittura");
-                        esito = ERROR_OCCURED;
+                        outcome = ERROR_OCCURED;
                     }else{
                         printf("operazione avvenuta correttamente");
-                        esito = POSITIVE;
+                        outcome = POSITIVE;
                     }
                 }   
             } 
-            fclose(contatti);
-            remove("contatti.txt");
-            fclose(copiaContatti);
-            rename("temp.txt","contatti.txt");
+            //we delete the original file and rename the temporary one
+            fclose(contacts);
+            remove(CONTACTS_PATH);
+            fclose(tmpFile);
+            rename("temp.txt",CONTACTS_PATH);
             
         }else{
-            esito = CONTACT_NOT_FOUND;
+            outcome = CONTACT_NOT_FOUND;
         }
-        return esito;
+
+        return outcome;
+
+    //else if we want to edit a contact...
     }else if(data->operazione == MODIFICA){
 
-        if(ricercaContatto(contatti, data) != -1){
-            fseek(contatti, 0, SEEK_SET);
-            FILE * copiaContatti;
-            copiaContatti = fopen("temp.txt", "a+");
-            while(fgets(buffer, sizeof(buffer), contatti) != NULL){
-                char * nome, * cognome, * numTelefono;
-                nome = strtok(buffer, " ");
-                cognome = strtok(NULL, " ");
-                numTelefono = strtok(NULL, "\n");
+        if(search_And_Set_ContactIndex(contacts, data) != -1){
+            fseek(contacts, 0, SEEK_SET);
+
+            FILE * tmpFile;
+            tmpFile = fopen("temp.txt", "a+");
+
+            while(fgets(buffer, sizeof(buffer), contacts) != NULL){
+                char * name, * lastName, * phoneNumber;
+                name = strtok(buffer, " ");
+                lastName = strtok(NULL, " ");
+                phoneNumber = strtok(NULL, "\n");
+
                 //controllo ogni ciclo se questa riga contiene o meno il contatto ricercato e in caso stampo il contatto modificato sul file temporaneo
-                if(strcmp(nome, data->nome) == 0 && strcmp(cognome, data->cognome) == 0 && strcmp(numTelefono, data->numTelefono) == 0){
-                    int nCharWritten = fprintf(copiaContatti, "%s %s %s\n", data->new_nome, data->new_cognome, data->new_numTelefono);
+                if(strcmp(name, data->nome) == 0 && strcmp(lastName, data->cognome) == 0 && strcmp(phoneNumber, data->numTelefono) == 0){
+                    int nCharWritten = fprintf(tmpFile, "%s %s %s\n", data->new_nome, data->new_cognome, data->new_numTelefono);
                     if((strlen(data->new_nome)+strlen(data->new_cognome)+strlen(data->new_numTelefono)+3) != nCharWritten || nCharWritten == -1){
-                        printf("errore nella fase di scrittura");
-                        esito = ERROR_OCCURED;
+                        printf("error during writing phase occurred");
+                        outcome = ERROR_OCCURED;
                     }else{
-                        printf("operazione avvenuta correttamente");
-                        esito = POSITIVE;
+                        printf("operation successfully completed");
+                        outcome = POSITIVE;
                     }
                 }else{
-                    int nCharWritten = fprintf(copiaContatti, "%s %s %s\n", nome, cognome, numTelefono);
-                    if((strlen(nome)+strlen(cognome)+strlen(numTelefono)+3) != nCharWritten || nCharWritten == -1){
-                        printf("errore nella fase di scrittura");
-                        esito = ERROR_OCCURED;
+                    int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
+                    if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
+                        printf("error during writing phase occurred");
+                        outcome = ERROR_OCCURED;
                     }else{
-                        printf("operazione avvenuta correttamente");
-                        esito = POSITIVE;
+                        printf("operation successfully completed");
+                        outcome = POSITIVE;
                     }
                 } 
             } 
-            fclose(contatti);
-            remove("contatti.txt");
-            fclose(copiaContatti);
-            rename("temp.txt","contatti.txt");
+            //we delete the original file and rename the temporary one
+            fclose(contacts);
+            remove(CONTACTS_PATH);
+            fclose(tmpFile);
+            rename("temp.txt",CONTACTS_PATH);
         
         }else{
-            esito = CONTACT_NOT_FOUND;
+            outcome = CONTACT_NOT_FOUND;
         }
-        return esito;
+        return outcome;
     }
 }
 
 
+
+//utility function for converting a given string to hex format
 void to_hex(const unsigned char *hash, char *output, size_t length) {
     for (size_t i = 0; i < length; i++) {
         sprintf(output + (i * 2), "%02x", hash[i]);
@@ -502,21 +577,18 @@ void to_hex(const unsigned char *hash, char *output, size_t length) {
 
 
 
-
-
-unsigned char * convertiInSHA256(char * str, unsigned char * hash)
+//utility function for converting a given string to sha256 format. returns an unsigned char array of 32 bytes
+unsigned char * convertToSHA256(char * str, unsigned char * hash)
 {
-    //unsigned char * hash = malloc(SHA256_BLOCK_SIZE * sizeof(unsigned char));
     SHA256_CTX sha256;
     sha256_init(&sha256);
     sha256_update(&sha256, str, strlen(str));
     sha256_final(&sha256, hash);
-    //output = hash;
-    
 }
   
 
 
+//utility function that only generates a random alpha-numeric token(random string) of a certain given "length"
 void gen_token(TOKEN token, size_t length) {
     char charset[] = "0123456789"
                      "abcdefghijklmnopqrstuvwxyz"

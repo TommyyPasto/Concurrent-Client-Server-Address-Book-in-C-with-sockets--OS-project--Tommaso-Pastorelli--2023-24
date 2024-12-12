@@ -5,16 +5,18 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include "/home/tommy/ProgettoSO/Utils/ClientUtils.h"
+#include <signal.h>
 
 
-//DATI BASE
+// CONNECTION DATA:
 
 #define SERVER_PORT 13000
 #define SERVER_ADDRESS "127.0.0.1"
 #define BUFFER_SIZE 173
 
 
-//CODICI DI ESITO DAL SERVER:
+
+// OUTCOME/ERROR CODES FROM SERVER:
 
 #define POSITIVE 0
 #define ERROR_OCCURED -1
@@ -26,7 +28,9 @@
 #define USER_NOT_FOUND 6
 #define TOO_MANY_CLIENTS_CONNECTED 7
 
-//STRINGHE DI ESITO DAL SERVER:
+
+
+// OUTCOME/ERROR STRINGS FROM SERVER:
 
 #define POSITIVE_STR "OPERATION SUCCESSFUL"
 #define ERROR_OCCURED_STR "ERR_CODE:[-1] -> UNKOWN ERROR OCCURRED "
@@ -39,7 +43,8 @@
 #define TOO_MANY_CLIENTS_CONNECTED_STR "ERR_CODE:[7] -> NO SUCH USER FOUND"
 
 
-//ERRORI LATO CLIENT
+
+// CONNECTION ERROR STRINGS
 
 #define SOCKET_CREATION_ERROR "an ERROR occurred during sockets creation!"
 #define CONNECTION_ERROR "CONNECTION FAILED, RETRY? [Y][N or other]"
@@ -47,7 +52,7 @@
 
 
 
-//VALORI NUMERICI DELLE OPERAZIONI
+// OPERATION VALUES
 
 #define LISTING '1'
 #define INSERT '2'
@@ -59,7 +64,9 @@
 
 #define checkConnessione 'c'
 
-//POSIZIONI NELL'ARRAY DEL MESSAGGIO
+
+
+// MESSAGE ARRAY FIXED INDEXES
 
 #define POS_NAME 1
 #define POS_LAST_NAME 21
@@ -71,10 +78,15 @@
 #define POS_PSW 121
 #define POS_TOKEN 141
 
+
+
+// TOKEN TYPE AND LENGTH
+typedef char * TOKEN;
 #define TOKEN_LENGTH_ 32
 
-typedef char * TOKEN;
 
+
+// MESSAGE TYPE
 typedef struct{
     char operation;
     char name[20];
@@ -88,15 +100,20 @@ typedef struct{
 }Message;
 
 
+
+// FUNCTIONS PROTOTYPES
+struct sockaddr_in * buildSocketaddress(char * serverAddress, int serverPort);
 int connect_To_Server(char * serverAddress, int serverPort);
 int tryConnection(int sock, struct sockaddr_in * serv_addr);
+
 Message * choose_operation();
 void create_Message_String(char messaggio[], Message * data);
+void listContacts(char * listaContatti, int numContatti);
 
+void printMenu(int logged);
 void printOutcome(int outcome);
-
 
 int checkAlphaNumeric(char * string);
 int checkNumber(char * string);
-void listContacts(char * listaContatti, int numContatti);
+int checkInsertedData(char * dataValue, char * typeOfData);
 

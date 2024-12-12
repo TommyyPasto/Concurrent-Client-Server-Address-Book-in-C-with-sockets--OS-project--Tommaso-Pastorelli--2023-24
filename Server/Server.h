@@ -6,12 +6,18 @@
 #include <fcntl.h>
 #include </home/tommy/ProgettoSO/Utils/sha256.h>
 #include <time.h>
+#include <signal.h>
 
 #define MAX_USERS_ 10
 
 #define SERVER_PORT 13000
 #define SERVER_ADDRESS "127.0.0.1"
 #define BUFFER_SIZE 173
+
+
+char * CONTACTS_PATH = "/home/tommy/ProgettoSO/Server/contatti.txt";
+char * USERS_PATH = "/home/tommy/ProgettoSO/Server/utenti.txt";
+
 
 //VALORE DI ESITO:
 #define POSITIVE 0
@@ -77,22 +83,25 @@ struct Contatto{
 
 Message * deconstruct_Message_String(char * msg);
 int execute_operation(Message * data);
-int numeroDiContatti(FILE * contatti);
-void listContacts(char * buffer, int numContatti);
-unsigned char * convertiInSHA256(char * str, unsigned char * output);
-int ricercaUtente(FILE * contatti, Message * data);
-int ricercaContatto(FILE * contatti, Message * data);
-int riscriviRubrica(FILE * contatti, Message * data);
+int numberOfContacts(FILE * contatti);
+
+int search_And_Set_UserIndex(FILE * contatti, Message * data);
+int search_And_Set_ContactIndex(FILE * contatti, Message * data);
+
+int rewriteAddressBook(FILE * contatti, Message * data);
 
 
-char * listaContatti();
-int inserisciContatto(Message * data);
-int modificaContatto(Message * data);
+char * readContacts();
+int insertContact(Message * data);
+int editContact(Message * data);
 int cancellaContatto(Message * data);
+
 int login(Message * data);
 int checkLoginSession(TOKEN token);
 void gen_token(TOKEN token, size_t length);
+unsigned char * convertToSHA256(char * str, unsigned char * output);
 void to_hex(const unsigned char *hash, char *output, size_t length);
+
 
 
 

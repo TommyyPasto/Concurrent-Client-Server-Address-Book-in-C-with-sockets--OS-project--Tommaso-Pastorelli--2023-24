@@ -1,6 +1,32 @@
+/**
+ * File: Client.c
+ * Project: Address Book in C Language
+ *
+ * Description:
+ * This program implements a simple address book application
+ * to manage contacts using the C programming language.
+ *
+ * Author: Tommaso Pastorelli
+ * Student ID: 7119242
+ * Email: tommaso.pastorelli1@edu.unifi.it
+ *
+ * Date Started: [Inserire Data di Inizio]
+ * Date Finished: [Inserire Data di Fine]
+ * Version: 1.0.0
+ *
+ * License: No license
+ * Compiler: GCC (GNU Compiler Collection)
+ *
+ * Compilation Instructions:
+ * compile using the make file
+ *
+ * Notes:
+ * - Ensure GCC is installed on your system.
+ * - Modify the program as needed to meet additional requirements.
+ */
 
 #include "Client.h"
-#include <signal.h>
+
 
 
 void clear_last_n_lines(int n) {
@@ -24,7 +50,6 @@ struct sockaddr_in * buildSocketaddress(char * serverAddress, int serverPort){
 
     return serv_addr;
 }
-
 
 
 //This function tries to connect the client to the server with the user's inserted data
@@ -83,7 +108,9 @@ struct sockaddr_in serv_addr;
 
 //handler for signal SIGINT(CTRL+C)
 void sigintHandler(int signum) {
-    printf("                you are now exiting the program...");
+    printf("\n\n");
+    printf(YEL"               you are now exiting the program..."RESET);
+    printf("\n");
     close(client_sock);
     exit(0);
 }
@@ -93,7 +120,7 @@ void sigintHandler(int signum) {
 
 //Application Main
 int main(int argc, char *argv[]) {
-    
+
     signal(SIGINT, sigintHandler);
 
     //defining a space in memory for the token to be used for login and operations
@@ -145,10 +172,10 @@ int main(int argc, char *argv[]) {
                     //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
                     //printESITO...................................................
                     int numContacts = ntohl(numContacts_t);
-                    int size = sizeof(char) * numContacts * 53;
+                    int size = sizeof(char) * numContacts * 53 + 1;
                     char buffer[size];
                     val = read(client_sock, buffer, size);
-                    listContacts(buffer, numContacts);
+                    listContacts(&buffer[1], numContacts);
                     sleep(2);
                 }
             }
