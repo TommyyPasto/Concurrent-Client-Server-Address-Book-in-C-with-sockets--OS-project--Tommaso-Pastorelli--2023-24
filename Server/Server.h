@@ -19,7 +19,8 @@ char * CONTACTS_PATH = "/home/tommy/ProgettoSO/Server/contatti.txt";
 char * USERS_PATH = "/home/tommy/ProgettoSO/Server/utenti.txt";
 
 
-//VALORE DI ESITO:
+//OUTCOME CODES
+
 #define POSITIVE 0
 #define ERROR_OCCURED -1
 #define ALR_EXISTING_CONTACT 1
@@ -31,30 +32,36 @@ char * USERS_PATH = "/home/tommy/ProgettoSO/Server/utenti.txt";
 #define TOO_MANY_CLIENTS_CONNECTED 7
 
 
-//VALORI NUMERICI DELLE OPERAZIONI
-#define VISUALIZZAZIONE '1'
-#define INSERIMENTO '2'
-#define MODIFICA '3'
-#define CANCELLAZIONE '4'
+
+//OPER. NUMS
+
+#define LISTING '1'
+#define INSERT '2'
+#define EDIT '3'
+#define DELETE '4'
 #define LOGIN '5'
 #define LOGOUT '6'
-#define ESCI '0'
 
-//POSIZIONI NELL'ARRAY DEL MESSAGGIO
-#define POS_OPERAZIONE 0
-#define POS_NOME 1
-#define POS_COGNOME 21
-#define POS_NUM_TELEFONO 41
-#define POS_NEW_NOME 51
-#define POS_NEW_COGNOME 71
-#define POS_NEW_NUM_TELEFONO 91
+
+
+// MESSAGE FIELDS INDEXES
+
+#define POS_NAME 1
+#define POS_LAST_NAME 21
+#define POS_PHONE_NUM 41
+#define POS_NEW_NAME 51
+#define POS_NEW_LAST_NAME 71
+#define POS_NEW_PHONE_NUM 91
 #define POS_USERNAME 101
 #define POS_PSW 121
 #define POS_TOKEN 141
 
+
+//TOKEN TYPE DEF.
+typedef char * TOKEN;
 #define TOKEN_LENGTH_ 32
 
-typedef char * TOKEN;
+
 
 /* struct UserSession{
     struct sockaddr_in userAddr;
@@ -63,26 +70,34 @@ typedef char * TOKEN;
 
 
 typedef struct{
-    char operazione;
-    char nome[20];
-    char cognome[20];
-    char numTelefono[10];
-    char new_nome[20];
-    char new_cognome[20];
-    char new_numTelefono[10];
+    char operation;
+    char name[20];
+    char lastName[20];
+    char phoneNumber[10];
+    char new_name[20];
+    char new_lastName[20];
+    char new_phoneNumber[10];
     char username[20];
     char psw[20];
     char token[32];
 }Message;
 
+
 struct Contatto{
-    char nome[20];
+    char name[20];
     char cognome[20];
     char numTel[20];
 };
 
+
+
+
+
+int socketSetUp(int option);
+struct sockaddr_in *binding(int socket, int port);
+
 Message * deconstruct_Message_String(char * msg);
-int execute_operation(Message * data);
+int execute_operation(Message *data);
 int numberOfContacts(FILE * contatti);
 
 int search_And_Set_UserIndex(FILE * contatti, Message * data);
@@ -94,7 +109,7 @@ int rewriteAddressBook(FILE * contatti, Message * data);
 char * readContacts();
 int insertContact(Message * data);
 int editContact(Message * data);
-int cancellaContatto(Message * data);
+int deleteContact(Message * data);
 
 int login(Message * data);
 int checkLoginSession(TOKEN token);

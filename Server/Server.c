@@ -34,7 +34,10 @@ TOKEN * sessionTokens;
 int lastSessionToken = 0;
 
 
-//used for socket set up
+
+/// @brief used for socket set up
+/// @param option, the option for socket setup 
+/// @return the socket's file descriptor
 int socketSetUp(int option){
     int server_fd;
     
@@ -56,7 +59,11 @@ int socketSetUp(int option){
 
 
 
-//used for binding
+
+/// @brief //used for binding
+/// @param socket the sockets fd
+/// @param port the port for connection
+/// @return the internet socket address(sockaddr_in * type)
 struct sockaddr_in * binding(int socket, int port){
     struct sockaddr_in * address;
     address = malloc(sizeof(struct sockaddr_in));
@@ -93,7 +100,7 @@ int main(int argc, char *argv[]) {
     char buffer[BUFFER_SIZE] = {0};
 
     //address var
-    struct sockaddr *address;
+    struct sockaddr_in *address;
 
     //server/client sockets fd
     int server_fd, new_socket;
@@ -138,15 +145,15 @@ int main(int argc, char *argv[]) {
         // returns buffers data into a proper struct
         Message * data = deconstruct_Message_String(buffer);
         
-        // se l'operazione è quella di visualizzazione allora gestisco l'op in modo diverso 
-        if(data->operazione == VISUALIZZAZIONE){
+        //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
+        if(data->operation == LISTING){
             char * contactsList = readContacts();
             int32_t nContacts_uint = htonl(contactsList[0]);
             write(new_socket, &nContacts_uint, sizeof(nContacts_uint));
             write(new_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53));
 
         }else{   
-            if(data->operazione != LOGIN){
+            if(data->operation != LOGIN){
 
                 // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
                 if(checkLoginSession(data->token) < 0){
@@ -172,22 +179,24 @@ int main(int argc, char *argv[]) {
 
 
 
-//Functions that simply decides which operation to perform based on the "operation" field contained in data
+/// @brief Functions that simply decides which operation to perform based on the "operation" field contained in data
+/// @param data variable of Message struct type that contains all data received from a client
+/// @return an integer containing a value representing the outcome of the operation
 int execute_operation(Message * data){
-    if(data->operazione == INSERIMENTO){
+    if(data->operation == INSERT){
         return insertContact(data);
     }
-    else if(data->operazione == MODIFICA){
+    else if(data->operation == EDIT){
         return editContact(data);
     }
-    else if(data->operazione == CANCELLAZIONE){
-        return cancellaContatto(data);
+    else if(data->operation == DELETE){
+        return deleteContact(data);
     }
-    else if(data->operazione == LOGIN){
+    else if(data->operation == LOGIN){
        
         return login(data);
     }
-    else if(data->operazione == LOGOUT){
+    else if(data->operation == LOGOUT){
         //logout()
     }
     return 0;
@@ -195,9 +204,8 @@ int execute_operation(Message * data){
 
 
 
-/*Function which reads all contacts contained on the address book file and puts them in an array of size 53*n+2, where n is the number of contacts, 
-and where the 2 additional positions contain outcome of the op. and number of contacts.
-It returns 3(ZERO_CONTACTS_SAVED) or 0(POSITIVE)*/
+/// @brief Function which reads all contacts contained on the address book file and puts them in an array of size 53*n+2, where n is the number of contacts and where the 2 additional positions contain outcome of the op. and number of contacts.
+/// @return returns the new array containing outcome and n.of contancts in the first 2 positions, and the contacts of the address book in the rest of the array.\n P.S. : the outcome value can be 3(ZERO_CONTACTS_SAVED) or 0(POSITIVE)
 char * readContacts(){
     int nContacts;
     int outcome;
@@ -232,7 +240,9 @@ char * readContacts(){
 
 
 
-//function that takes a Message struct as input and inserts the contact contained into the address book file
+/// @brief function that takes a Message struct as input and inserts the contact contained into the address book file
+/// @param data variable of Message struct type that contains all data received from a client
+/// @return the outcome
 int insertContact(Message * data){
     
     // opening file in append mode
@@ -244,10 +254,10 @@ int insertContact(Message * data){
     // Here, we are checking if the contact is already present in the file before inserting it
     if(search_And_Set_ContactIndex(contacts, data) < 0){
 
-        int nCharWritten = fprintf(contacts, "%s %s %s\n", data->nome, data->cognome, data->numTelefono);
+        int nCharWritten = fprintf(contacts, "%s %s %s\n", data->name, data->lastName, data->phoneNumber);
         
         // checking that the length of the written data corrisponds to the actual length of the string we wanted to print into the file
-        if((strlen(data->nome)+strlen(data->cognome)+strlen(data->numTelefono)+3) != nCharWritten || nCharWritten == -1){
+        if((strlen(data->name)+strlen(data->lastName)+strlen(data->phoneNumber)+3) != nCharWritten || nCharWritten == -1){
             printf("error during writing phase occurred");
             outcome = ERROR_OCCURED;
         }else{
@@ -263,7 +273,9 @@ int insertContact(Message * data){
 
 
 
-//function that takes a Message struct as input and edits a contact of the address book
+/// @brief function that takes a Message struct as input and edits a contact of the address book
+/// @param data variable of Message struct type that contains all data received from a client
+/// @return the outcome
 int editContact(Message * data){
     FILE * contacts;
     char buffer[53];
@@ -276,13 +288,12 @@ int editContact(Message * data){
     }
 
     //Now we are checking if the after-editing contact is one that already exists in the address book, and if so we stop the operation
-    char nomeTmp[20], cognomeTmp[20], numTmp[10];
     Message dataTemp;
 
     //copying the data
-    strcpy(dataTemp.nome, data->new_nome);
-    strcpy(dataTemp.cognome, data->new_cognome);
-    strcpy(dataTemp.numTelefono, data->new_numTelefono);
+    strcpy(dataTemp.name, data->new_name);
+    strcpy(dataTemp.lastName, data->new_lastName);
+    strcpy(dataTemp.phoneNumber, data->new_phoneNumber);
 
     //checking if its already present
     if(search_And_Set_ContactIndex(contacts, &dataTemp) != -1){
@@ -298,8 +309,10 @@ int editContact(Message * data){
 
 
 
-//function that takes a Message struct as input and deletes a contact of the address book
-int cancellaContatto(Message * data){
+/// @brief function that takes a Message struct as input and deletes a contact of the address book
+/// @param data variable of Message struct type that contains all data received from a client
+/// @return the outcome
+int deleteContact(Message * data){
     FILE * contacts;
     contacts = fopen(CONTACTS_PATH, "r+");
     return rewriteAddressBook(contacts, data);;
@@ -307,8 +320,9 @@ int cancellaContatto(Message * data){
 
 
 
-/*function which cheks wheter the username and password data sent by the client are correspondent to a certain user account
-and in case creates and sends back to the client a uniquely identified session token*/
+/// @brief function which cheks wheter the username and password data sent by the client are correspondent to a certain user account and in case creates and sends back to the client a uniquely identified session token
+/// @param data variable of Message struct type that contains all data received from a client
+/// @return the outcome
 int login(Message * data){
     int loginOutcome;
     char buffer[100];
@@ -366,7 +380,9 @@ int login(Message * data){
 
 
 
-//function that checks login session, serves only a security purpose
+/// @brief function that checks login session, serves only a security purpose
+/// @param token token we want to compare
+/// @return the outcome of the checking operation
 int checkLoginSession(TOKEN token){
     for(int i = 0; i < lastSessionToken; i++){
         if(strcmp(token, sessionTokens[i]) == 0){
@@ -378,7 +394,8 @@ int checkLoginSession(TOKEN token){
 
 
 
-//function for logging out. takes the session token as input
+/// @brief function for logging out. takes the session token as input
+/// @param token 
 void logout(TOKEN token){
     for(int i = 0; i < lastSessionToken; i++){
         if(strcmp(token, sessionTokens[i]) == 0){
@@ -395,25 +412,25 @@ void logout(TOKEN token){
 //simple function that builds a Message struct variable using clients message array data
 Message * deconstruct_Message_String(char * msg){
     Message * data  = malloc(sizeof (Message));
-    data->operazione = msg[0];
+    data->operation = msg[0];
     char * mesg;
-    mesg = &msg[POS_NOME];
-    strncpy(data->nome, mesg, 20);
+    mesg = &msg[POS_NAME];
+    strncpy(data->name, mesg, 20);
     
-    mesg = &msg[POS_COGNOME];
-    strncpy(data->cognome, mesg, 20);
+    mesg = &msg[POS_LAST_NAME];
+    strncpy(data->lastName, mesg, 20);
    
-    mesg = &msg[POS_NUM_TELEFONO];
-    strncpy(data->numTelefono, mesg, 10);
+    mesg = &msg[POS_PHONE_NUM];
+    strncpy(data->phoneNumber, mesg, 10);
     
-    mesg = &msg[POS_NEW_NOME];
-    strncpy(data->new_nome, mesg, 20);
+    mesg = &msg[POS_NEW_NAME];
+    strncpy(data->new_name, mesg, 20);
     
-    mesg = &msg[POS_NEW_COGNOME];
-    strncpy(data->new_cognome, mesg, 20);
+    mesg = &msg[POS_NEW_LAST_NAME];
+    strncpy(data->new_lastName, mesg, 20);
     
-    mesg = &msg[POS_NEW_NUM_TELEFONO];
-    strncpy(data->new_numTelefono, mesg, 10);
+    mesg = &msg[POS_NEW_PHONE_NUM];
+    strncpy(data->new_phoneNumber, mesg, 10);
     
     mesg = &msg[POS_USERNAME];
     strncpy(data->username, mesg, 20);
@@ -449,12 +466,12 @@ int search_And_Set_ContactIndex(FILE * contacts, Message * data){
     char buffer[53];
     fseek(contacts, 0, SEEK_SET);
     while(fgets(buffer, sizeof(buffer), contacts) != NULL){
-        char * nome, * cognome, * numTelefono;
-        nome = strtok(buffer, " ");
-        cognome = strtok(NULL, " ");
-        numTelefono = strtok(NULL, "\n");
-        if(strcmp(nome, data->nome) == 0 && strcmp(cognome, data->cognome) == 0 && strcmp(numTelefono, data->numTelefono) == 0)
-            return fseek(contacts, -(strlen(nome)+strlen(cognome)+strlen(numTelefono)+3), SEEK_CUR);
+        char * name, * lastName, * phoneNumber;
+        name = strtok(buffer, " ");
+        lastName = strtok(NULL, " ");
+        phoneNumber = strtok(NULL, "\n");
+        if(strcmp(name, data->name) == 0 && strcmp(lastName, data->lastName) == 0 && strcmp(phoneNumber, data->phoneNumber) == 0)
+            return fseek(contacts, -(strlen(name)+strlen(lastName)+strlen(phoneNumber)+3), SEEK_CUR);
     }
     return -1;
 }
@@ -475,11 +492,11 @@ int numberOfContacts(FILE * contacts){
 
 
 
-//Funzione utilizzata dalla modifica e dalla cancellazione
+//after passing an already opened file, this function changes the data of the address book, updating or removing a certain contact
 int rewriteAddressBook(FILE * contacts, Message * data){
     int outcome;
     char buffer[53];
-    if(data->operazione == CANCELLAZIONE){
+    if(data->operation == DELETE){
         if(search_And_Set_ContactIndex(contacts, data) != -1){
             fseek(contacts, 0, SEEK_SET);
 
@@ -493,13 +510,13 @@ int rewriteAddressBook(FILE * contacts, Message * data){
                 phoneNumber = strtok(NULL, "\n");
                 
                 //if the contact is not the same we can write it down also in the new file
-                if(strcmp(name, data->nome) != 0 && strcmp(lastName, data->cognome) != 0 && strcmp(phoneNumber, data->numTelefono) != 0){
+                if(strcmp(name, data->name) != 0 && strcmp(lastName, data->lastName) != 0 && strcmp(phoneNumber, data->phoneNumber) != 0){
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
                     if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
                         printf("errore nella fase di scrittura");
                         outcome = ERROR_OCCURED;
                     }else{
-                        printf("operazione avvenuta correttamente");
+                        printf("operation avvenuta correttamente");
                         outcome = POSITIVE;
                     }
                 }   
@@ -517,7 +534,7 @@ int rewriteAddressBook(FILE * contacts, Message * data){
         return outcome;
 
     //else if we want to edit a contact...
-    }else if(data->operazione == MODIFICA){
+    }else if(data->operation == EDIT){
 
         if(search_And_Set_ContactIndex(contacts, data) != -1){
             fseek(contacts, 0, SEEK_SET);
@@ -532,9 +549,9 @@ int rewriteAddressBook(FILE * contacts, Message * data){
                 phoneNumber = strtok(NULL, "\n");
 
                 //controllo ogni ciclo se questa riga contiene o meno il contatto ricercato e in caso stampo il contatto modificato sul file temporaneo
-                if(strcmp(name, data->nome) == 0 && strcmp(lastName, data->cognome) == 0 && strcmp(phoneNumber, data->numTelefono) == 0){
-                    int nCharWritten = fprintf(tmpFile, "%s %s %s\n", data->new_nome, data->new_cognome, data->new_numTelefono);
-                    if((strlen(data->new_nome)+strlen(data->new_cognome)+strlen(data->new_numTelefono)+3) != nCharWritten || nCharWritten == -1){
+                if(strcmp(name, data->name) == 0 && strcmp(lastName, data->lastName) == 0 && strcmp(phoneNumber, data->phoneNumber) == 0){
+                    int nCharWritten = fprintf(tmpFile, "%s %s %s\n", data->new_name, data->new_lastName, data->new_phoneNumber);
+                    if((int)(strlen(data->new_name)+strlen(data->new_lastName)+strlen(data->new_phoneNumber)+3) != nCharWritten || nCharWritten == -1){
                         printf("error during writing phase occurred");
                         outcome = ERROR_OCCURED;
                     }else{
