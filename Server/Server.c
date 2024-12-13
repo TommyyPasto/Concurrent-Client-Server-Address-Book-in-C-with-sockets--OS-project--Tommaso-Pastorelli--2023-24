@@ -27,6 +27,9 @@
 
 
 #include "Server.h"
+#include <bits/waitflags.h>
+#include <sys/wait.h>
+#include "errno.h"
 
 
 //we keep an array of tokens, specifically there will be 10, the max number of connected client allowed at the same time
@@ -85,10 +88,42 @@ struct sockaddr_in * binding(int socket, int port){
 
 
 
+
+
+//server/client sockets fd
+int server_fd, new_socket;
+
+//Signal handler for the signal SIGINT
+void sigintHandler(int signum) {
+    close(server_fd);
+    close(new_socket);
+    exit(0);
+}
+
+//Signal handler for the signal SIGCHLD
+void sigchldHandler(int signum) {
+    printf("\nCIAOOOOOO, SI STO CHIUDENDO ORAAAAA");
+    
+    int sigv;
+    if(waitpid(-1, &sigv, WUNTRACED) < 0){
+        perror("wait error");
+        exit(errno);
+    }else{
+        printf(" CON EXIT(%d)\n", sigv);
+        fflush(stdout);
+    }
+}
+
+
+
+
 //main function
 int main(int argc, char *argv[]) {
 
+    //setting up signal handlers
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, sigintHandler);
+    signal(SIGCHLD, sigchldHandler);
 
     //we allocate memory for all the tokens
     sessionTokens = malloc(MAX_USERS_ * sizeof(TOKEN));
@@ -102,8 +137,7 @@ int main(int argc, char *argv[]) {
     //address var
     struct sockaddr_in *address;
 
-    //server/client sockets fd
-    int server_fd, new_socket;
+    
     
     //creating the socket on servers side
     server_fd = socketSetUp(1);
@@ -122,59 +156,94 @@ int main(int argc, char *argv[]) {
 
     printf("Server listening on PORT: %d\n", SERVER_PORT);
 
-    // Accepting connections
-    if ((new_socket = accept(server_fd, (struct sockaddr *)address, (socklen_t*)&addrlen)) < 0) {
-        perror("accept failed");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
+    
 
     //waiting for clients requests
     while(1){
 
-        // reading data from client
-        int valread = read(new_socket, buffer, BUFFER_SIZE);
-        if(valread == -1){
-            // closes connection
-            close(new_socket);
+        pid_t childpid; /* variable to store child's process id */
+
+        // Accepting connections
+        if ((new_socket = accept(server_fd, (struct sockaddr *)address, (socklen_t*)&addrlen)) < 0) {
+            perror("accept failed");
+            fflush(stdout);
             close(server_fd);
-            perror("client disconnected");
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
 
-        // returns buffers data into a proper struct
-        Message * data = deconstruct_Message_String(buffer);
-        
-        //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
-        if(data->operation == LISTING){
-            char * contactsList = readContacts();
-            int32_t nContacts_uint = htonl(contactsList[0]);
-            write(new_socket, &nContacts_uint, sizeof(nContacts_uint));
-            write(new_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53));
+        int option = 1;
+        if (setsockopt(new_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
+            perror("Errore in setsockopt");
+            fflush(stdout);
+            close(server_fd);
+            exit(EXIT_FAILURE);
+        }
 
-        }else{   
-            if(data->operation != LOGIN){
+    
+        if ((childpid = fork()) == -1)
+        { // fork failed.
+            close(new_socket);
+            continue;
+        }
+        else if (childpid > 0)
+        { // parent process
+            printf("\n parent process: %d\n", childpid);
+            close(new_socket);
+        }
+        else if (childpid == 0)
+        { // child process
+            printf("\n child process: %d\n", childpid);
 
-                // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
-                if(checkLoginSession(data->token) < 0){
-                    int outcome = TRYING_ILLEGAL_ACCESS;
-                    int32_t outcome_uint = htonl(outcome);
-                    write(new_socket, &outcome_uint, sizeof(outcome_uint));
+            // reading data from client
+            int valread = read(new_socket, buffer, BUFFER_SIZE);
+            if(valread == -1){
+                // closes connection
+                close(new_socket);
+                close(server_fd);
+                perror("client disconnected");
+                exit(-1);
+            }
+
+            // returns buffers data into a proper struct
+            Message * data = deconstruct_Message_String(buffer);
+            
+            //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
+            if(data->operation == LISTING){
+                char * contactsList = readContacts();
+                int32_t nContacts_uint = htonl(contactsList[0]);
+                write(new_socket, &nContacts_uint, sizeof(nContacts_uint));
+                write(new_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53));
+
+            }else{   
+                if(data->operation != LOGIN){
+
+                    // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
+                    if(checkLoginSession(data->token) < 0){
+                        int outcome = TRYING_ILLEGAL_ACCESS;
+                        int32_t outcome_uint = htonl(outcome);
+                        write(new_socket, &outcome_uint, sizeof(outcome_uint));
+                    }else{
+                        int outcome = execute_operation(data);
+                        int32_t outcome_uint = htonl(outcome);
+                        int val = write(new_socket, &outcome_uint, sizeof(outcome_uint));
+                    }
                 }else{
                     int outcome = execute_operation(data);
-                    int32_t outcome_uint = htonl(outcome);
-                    int val = write(new_socket, &outcome_uint, sizeof(outcome_uint));
+                    char * buffer = malloc(33 * sizeof(char));
+                    buffer[0] = outcome;
+                    if(outcome == POSITIVE)
+                        strncpy((char *)&(buffer[1]), (const char *)sessionTokens[lastSessionToken-1], strlen(sessionTokens[lastSessionToken-1])); 
+                    write(new_socket, buffer, 33 * sizeof(char));
                 }
-            }else{
-                int outcome = execute_operation(data);
-                char * buffer = malloc(33 * sizeof(char));
-                buffer[0] = outcome;
-                if(outcome == POSITIVE)
-                    strncpy((char *)&(buffer[1]), (const char *)sessionTokens[lastSessionToken-1], strlen(sessionTokens[lastSessionToken-1])); 
-                write(new_socket, buffer, 33 * sizeof(char));
             }
+            close(new_socket);
+            exit(0);
         }
+        printf("server: got connection from %s\n", inet_ntoa(address->sin_addr));
+            
+
     }
+
 }
 
 
