@@ -58,8 +58,8 @@
 #define INSERT '2'
 #define EDIT '3'
 #define DELETE '4'
-#define LOGIN '5'
-#define LOGOUT '6'
+#define LOGIN '+'
+#define LOGOUT '-'
 #define EXIT '0'
 
 #define checkConnessione 'c'

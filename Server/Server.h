@@ -4,9 +4,13 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include </home/tommy/ProgettoSO/Utils/sha256.h>
 #include <time.h>
+#include <bits/waitflags.h>
 #include <signal.h>
+#include <sys/wait.h>
+#include "errno.h"
+#include <openssl/sha.h>
+
 
 #define MAX_USERS_ 10
 
@@ -39,8 +43,8 @@ char * USERS_PATH = "/home/tommy/ProgettoSO/Server/utenti.txt";
 #define INSERT '2'
 #define EDIT '3'
 #define DELETE '4'
-#define LOGIN '5'
-#define LOGOUT '6'
+#define LOGIN '+'
+#define LOGOUT '-'
 
 
 
@@ -103,7 +107,7 @@ int numberOfContacts(FILE * contatti);
 int search_And_Set_UserIndex(FILE * contatti, Message * data);
 int search_And_Set_ContactIndex(FILE * contatti, Message * data);
 
-int rewriteAddressBook(FILE * contatti, Message * data);
+int rewriteAddressBook(Message * data);
 
 
 char * readContacts();

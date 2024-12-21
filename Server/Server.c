@@ -27,14 +27,11 @@
 
 
 #include "Server.h"
-#include <bits/waitflags.h>
-#include <sys/wait.h>
-#include "errno.h"
 
 
 //we keep an array of tokens, specifically there will be 10, the max number of connected client allowed at the same time
 TOKEN * sessionTokens;
-int lastSessionToken = 0;
+int newSessionTokenIndex = 0;
 
 
 
@@ -156,7 +153,7 @@ int main(int argc, char *argv[]) {
 
     printf("Server listening on PORT: %d\n", SERVER_PORT);
 
-    
+    int pidpadre = getpid();
 
     //waiting for clients requests
     while(1){
@@ -172,14 +169,13 @@ int main(int argc, char *argv[]) {
         }
 
         int option = 1;
-        if (setsockopt(new_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
+        if (setsockopt(new_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) < 0) {
             perror("Errore in setsockopt");
             fflush(stdout);
             close(server_fd);
             exit(EXIT_FAILURE);
         }
 
-    
         if ((childpid = fork()) == -1)
         { // fork failed.
             close(new_socket);
@@ -193,51 +189,50 @@ int main(int argc, char *argv[]) {
         else if (childpid == 0)
         { // child process
             printf("\n child process: %d\n", childpid);
+            close(server_fd);
+            signal(SIGPIPE, SIG_DFL);
+            while(1){   
+                // reading data from client
+                int valread = read(new_socket, buffer, BUFFER_SIZE);
+                
+                // returns buffers data into a proper struct
+                Message * data = deconstruct_Message_String(buffer);
+                printf("richiesta ricevuta: %c\n", data->operation);
+                fflush(stdout);
+                
+                //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
+                if(data->operation == LISTING){
+                    char * contactsList = readContacts();
+                    int32_t nContacts_uint = htonl(contactsList[0]);
+                    write(new_socket, &nContacts_uint, sizeof(nContacts_uint));
+                    write(new_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53 + 1)); 
+                        
 
-            // reading data from client
-            int valread = read(new_socket, buffer, BUFFER_SIZE);
-            if(valread == -1){
-                // closes connection
-                close(new_socket);
-                close(server_fd);
-                perror("client disconnected");
-                exit(-1);
-            }
+                }else{ 
+                    if(data->operation != LOGIN){
 
-            // returns buffers data into a proper struct
-            Message * data = deconstruct_Message_String(buffer);
-            
-            //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
-            if(data->operation == LISTING){
-                char * contactsList = readContacts();
-                int32_t nContacts_uint = htonl(contactsList[0]);
-                write(new_socket, &nContacts_uint, sizeof(nContacts_uint));
-                write(new_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53));
-
-            }else{   
-                if(data->operation != LOGIN){
-
-                    // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
-                    if(checkLoginSession(data->token) < 0){
-                        int outcome = TRYING_ILLEGAL_ACCESS;
-                        int32_t outcome_uint = htonl(outcome);
-                        write(new_socket, &outcome_uint, sizeof(outcome_uint));
+                        // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
+                        if(checkLoginSession(data->token) < 0){
+                            int outcome = TRYING_ILLEGAL_ACCESS;
+                            int32_t outcome_uint = htonl(outcome);
+                            write(new_socket, &outcome_uint, sizeof(outcome_uint));
+                        }else{
+                            int outcome = execute_operation(data);
+                            int32_t outcome_uint = htonl(outcome);
+                            write(new_socket, &outcome_uint, sizeof(outcome_uint));
+                        }
                     }else{
                         int outcome = execute_operation(data);
-                        int32_t outcome_uint = htonl(outcome);
-                        int val = write(new_socket, &outcome_uint, sizeof(outcome_uint));
+                        char * buffer = malloc(33 * sizeof(char));
+                        buffer[0] = outcome;
+                        if(outcome == POSITIVE)
+                            strncpy((char *)&(buffer[1]), (const char *)sessionTokens[newSessionTokenIndex-1], strlen(sessionTokens[newSessionTokenIndex-1])); 
+                        write(new_socket, buffer, 33 * sizeof(char));
                     }
-                }else{
-                    int outcome = execute_operation(data);
-                    char * buffer = malloc(33 * sizeof(char));
-                    buffer[0] = outcome;
-                    if(outcome == POSITIVE)
-                        strncpy((char *)&(buffer[1]), (const char *)sessionTokens[lastSessionToken-1], strlen(sessionTokens[lastSessionToken-1])); 
-                    write(new_socket, buffer, 33 * sizeof(char));
                 }
+                /* close(new_socket);
+                exit(0); */
             }
-            close(new_socket);
-            exit(0);
         }
         printf("server: got connection from %s\n", inet_ntoa(address->sin_addr));
             
@@ -266,10 +261,104 @@ int execute_operation(Message * data){
         return login(data);
     }
     else if(data->operation == LOGOUT){
-        //logout()
+        logout(data->token);
+        return 0;
     }
-    return 0;
+    return POSITIVE;
 }
+
+/// @brief Locks a certain file in read mode from start index to end index, making processes wait for lock or not wait for lock
+/// @param stream file to lock
+/// @param start start index
+/// @param end end index
+/// @param wait F_SETLKW for waiting, F_SETLK for no waiting
+/// @return the outcome of the locking operation
+struct flock * lockRD(FILE * stream, int start, int end, int cmd){
+    if(end == EOF){
+        //getting the end of file pointer value
+        fseek(stream, 0, SEEK_END);
+        end = ftell(stream);
+    }
+
+    //getting the file descr. of the add.book file.
+    int fd = fileno(stream);
+    
+    struct flock * fl = malloc(sizeof(struct flock));
+    fl->l_type = F_RDLCK;
+    fl->l_whence = SEEK_SET;
+    fl->l_start = start;
+    fl->l_len = end;
+    fl->l_pid = getpid();
+    
+    // If not able to lock the file exit, else proceed
+    if (fcntl(fd, cmd, fl) == -1) 
+    {
+        perror("can't set lock\n");
+        exit(1);
+    }else{
+        printf("i'm through: %d\n" , getpid());
+    }
+
+    return fl;
+}
+
+
+/// @brief Locks a certain file in write mode from start index to end index, making processes wait for lock or not wait for lock
+/// @param stream file to lock
+/// @param start start index
+/// @param end end index
+/// @param wait F_SETLKW for waiting, F_SETLK for no waiting
+/// @return the outcome of the locking operation
+struct flock * lockWR(FILE * stream, int start, int end, int cmd){
+    if(end == EOF){
+        //getting the end of file pointer value
+        fseek(stream, 0, SEEK_END);
+        end = ftell(stream);
+    }
+
+    //getting the file descr. of the add.book file.
+    int fd = fileno(stream);
+    
+    struct flock * fl = malloc(sizeof(struct flock));
+    fl->l_type = F_WRLCK;
+    fl->l_whence = SEEK_SET;
+    fl->l_start = start;
+    fl->l_len = end;
+    fl->l_pid = getpid();
+    
+    // If not able to lock the file exit, else proceed
+    if (fcntl(fd, cmd, fl) == -1) 
+    {
+        perror("can't set lock\n");
+        fflush(stdout);
+        exit(1);
+    }else{
+        printf("i'm through: %d\n" , getpid());
+        fflush(stdout);
+    }
+
+    return fl;
+}
+
+
+/// @brief Unlocks a locked file
+/// @param stream file to lock
+/// @return the outcome of the unlocking operation
+int unlock(FILE * stream, struct flock * fl){
+    if(fl->l_type != F_UNLCK){
+        fl->l_type = F_UNLCK;
+        printf("file unlocked\n");
+        fflush(stdout);
+        return 0;
+    }else{
+        printf("file was not locked\n");
+        fflush(stdout);
+        return -1;
+    }
+}
+
+
+
 
 
 
@@ -283,10 +372,18 @@ char * readContacts(){
     FILE * contacts;
 
     contacts = fopen(CONTACTS_PATH, "a+");
-    contactsList = malloc(2 + nContacts * 53 * sizeof(char));
+    
+    //locking file
+    struct flock * fl = lockRD(contacts, 0, EOF, F_SETLKW);
 
     nContacts = numberOfContacts(contacts);
+    printf("number of contacts: %d\n", nContacts);
+
+    contactsList = malloc(2 + nContacts * 53 * sizeof(char));
+
     if(nContacts == 0){
+        printf("%d is unlocking file\n", getpid());
+        unlock(contacts, fl);
         contactsList[1] = ZERO_CONTACTS_SAVED;
         return contactsList;
     }
@@ -298,9 +395,12 @@ char * readContacts(){
     while(fgets(buffer, sizeof(buffer), contacts)){
         char * str = &contactsList[i * 53 + 2];
         strncpy(str, buffer, 53);
-        printf("%s", str);
+        printf("%s\n", str);
         i++;
     }
+
+    unlock(contacts, fl);
+    fclose(contacts);
 
     contactsList[1] = POSITIVE;
     contactsList[0] = nContacts;
@@ -317,6 +417,9 @@ int insertContact(Message * data){
     // opening file in append mode
     FILE * contacts;
     contacts = fopen(CONTACTS_PATH, "a+");
+
+    //locking file
+    struct flock * fl = lockWR(contacts, 0, EOF, F_SETLKW);
 
     int outcome;
 
@@ -336,7 +439,12 @@ int insertContact(Message * data){
     }else{
         outcome = ALR_EXISTING_CONTACT;
     }
+
+    //unlocking and closing file
+    printf("%d is unlocking file...\n", getpid());
+    unlock(contacts, fl);
     fclose(contacts);
+
     return outcome;
 }
 
@@ -354,6 +462,7 @@ int editContact(Message * data){
     if(contacts == NULL){
         contacts = fopen(CONTACTS_PATH, "a+");
         fclose(contacts);
+        contacts = fopen(CONTACTS_PATH, "r+");
     }
 
     //Now we are checking if the after-editing contact is one that already exists in the address book, and if so we stop the operation
@@ -367,13 +476,15 @@ int editContact(Message * data){
     //checking if its already present
     if(search_And_Set_ContactIndex(contacts, &dataTemp) != -1){
         outcome = ALR_EXISTING_CONTACT;
-        printf("contact already exists");
+        printf("contact already exists\n");
         return outcome;
     }
+    fclose(contacts);
 
-    free(&dataTemp);
+    //this function also closes the original contacts file, so theres no need to close it here
+    outcome = rewriteAddressBook(data);
 
-    return rewriteAddressBook(contacts, data);
+    return outcome;
 }
 
 
@@ -382,9 +493,9 @@ int editContact(Message * data){
 /// @param data variable of Message struct type that contains all data received from a client
 /// @return the outcome
 int deleteContact(Message * data){
-    FILE * contacts;
-    contacts = fopen(CONTACTS_PATH, "r+");
-    return rewriteAddressBook(contacts, data);;
+    //FILE * contacts;
+    //contacts = fopen(CONTACTS_PATH, "r+");
+    return rewriteAddressBook(data);;
 }
 
 
@@ -399,8 +510,6 @@ int login(Message * data){
     
     //checks if the user is present in the users file
     if(search_And_Set_UserIndex(users, data) != -1){
-        fseek(users, 0, SEEK_CUR);
-
 
         //Variables used just for checking if the psw contained in the file is the same as the one sent by the user after hashing
         char * pswSHA256hex;
@@ -410,28 +519,32 @@ int login(Message * data){
         char * convertedPsw;
         
         fgets(buffer, sizeof(buffer), users);
-        strtok(buffer, " ");
+        char * username = strtok(buffer, " ");
         pswSHA256hex = strtok(NULL, "\n");
         
         //takes space to contain the hashed(sha256) password
-        hash = malloc(SHA256_BLOCK_SIZE * sizeof(unsigned char));
+        hash = malloc(SHA256_DIGEST_LENGTH * sizeof(unsigned char));
         convertToSHA256(data->psw, hash);
         
         //takes space to contain the hex(ed) password 
-        convertedPsw = malloc(1 + sizeof(unsigned char) * SHA256_BLOCK_SIZE * 2);
-        to_hex(hash, convertedPsw, SHA256_BLOCK_SIZE);
-        
+        convertedPsw = malloc(1 + sizeof(unsigned char) * SHA256_DIGEST_LENGTH * 2);
+        to_hex(hash, convertedPsw, SHA256_DIGEST_LENGTH);
+
+        free(hash);
+
         if(strcmp(pswSHA256hex, convertedPsw) == 0){
+            free(convertedPsw);
             printf("POSITIVE LOGIN");
-            if(lastSessionToken < (MAX_USERS_-1)){
+            if(newSessionTokenIndex < (MAX_USERS_-1)){
                 
                 //insrting the new session token into the array after checking wheter we have a limit of max logged users
                 TOKEN str = malloc(32 * sizeof(char));
-                gen_token(sessionTokens[lastSessionToken], TOKEN_LENGTH_);
-                lastSessionToken++;
+                gen_token(sessionTokens[newSessionTokenIndex], TOKEN_LENGTH_);
+                newSessionTokenIndex++;
                 loginOutcome = POSITIVE;
 
             }else{
+                free(convertedPsw);
                 printf("\nTOO MANY CLIENTS CONNECTED\n\n");
                 loginOutcome = TOO_MANY_CLIENTS_CONNECTED;
             } 
@@ -441,9 +554,11 @@ int login(Message * data){
             loginOutcome = PASSWORD_NOT_CORRECT;
         } 
     }else{
-        printf("\nSUER NOT FOUND\n\n");
+        printf("\nUSER NOT FOUND\n\n");
         loginOutcome = USER_NOT_FOUND;
     }
+
+    
     return loginOutcome;  
 }
 
@@ -453,7 +568,7 @@ int login(Message * data){
 /// @param token token we want to compare
 /// @return the outcome of the checking operation
 int checkLoginSession(TOKEN token){
-    for(int i = 0; i < lastSessionToken; i++){
+    for(int i = 0; i < newSessionTokenIndex; i++){
         if(strcmp(token, sessionTokens[i]) == 0){
             return 1;
         }
@@ -466,14 +581,16 @@ int checkLoginSession(TOKEN token){
 /// @brief function for logging out. takes the session token as input
 /// @param token 
 void logout(TOKEN token){
-    for(int i = 0; i < lastSessionToken; i++){
+    printf("SONO NEL LOGOUT");
+    for(int i = 0; i < newSessionTokenIndex; i++){
         if(strcmp(token, sessionTokens[i]) == 0){
-            for(int j = i; j < (lastSessionToken-1); j++){
+            printf("\nTROVATO il token: %d che è uguale al token %d\n", sessionTokens[i], token);
+            for(int j = i; j < (newSessionTokenIndex-1); j++){
                 sessionTokens[j] = sessionTokens[j+1];
             }
         }
     }
-    lastSessionToken--;
+    newSessionTokenIndex--;
 }
 
 
@@ -517,13 +634,13 @@ Message * deconstruct_Message_String(char * msg){
 
 //after passing an already opened file, this function searches for a user in the users file and returns the outcome of the fseek operation
 int search_And_Set_UserIndex(FILE * users, Message * data){
-    char buffer[54];
+    char buffer[86];
     fseek(users, 0, SEEK_SET);
     while(fgets(buffer, sizeof(buffer), users) != NULL){
         char * username;
         username = strtok(buffer, " ");
         if(strcmp(username, data->username) == 0)
-            return fseek(users, -(strlen(username) + 34), SEEK_CUR);
+            return fseek(users, -(strlen(username) + 66), SEEK_CUR);
     }
     return -1;
 }
@@ -562,9 +679,16 @@ int numberOfContacts(FILE * contacts){
 
 
 //after passing an already opened file, this function changes the data of the address book, updating or removing a certain contact
-int rewriteAddressBook(FILE * contacts, Message * data){
+int rewriteAddressBook(Message * data){
     int outcome;
     char buffer[53];
+
+    //opening file
+    FILE * contacts = fopen(CONTACTS_PATH, "r+");
+
+    //locking file
+    struct flock * fl = lockWR(contacts, 0, EOF, F_SETLKW);
+
     if(data->operation == DELETE){
         if(search_And_Set_ContactIndex(contacts, data) != -1){
             fseek(contacts, 0, SEEK_SET);
@@ -572,6 +696,10 @@ int rewriteAddressBook(FILE * contacts, Message * data){
             //we create a temp file for containing the already existing data except the one deleted, and then we rename the file
             FILE * tmpFile;
             tmpFile = fopen("temp.txt", "a+");
+
+            //locking temporary file so we can safely write data on it
+            struct flock * flTmp = lockWR(tmpFile, 0, EOF, F_SETLKW);
+
             while(fgets(buffer, sizeof(buffer), contacts) != NULL){
                 char * name, * lastName, * phoneNumber;
                 name = strtok(buffer, " ");
@@ -582,22 +710,27 @@ int rewriteAddressBook(FILE * contacts, Message * data){
                 if(strcmp(name, data->name) != 0 && strcmp(lastName, data->lastName) != 0 && strcmp(phoneNumber, data->phoneNumber) != 0){
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
                     if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
-                        printf("errore nella fase di scrittura");
+                        printf("error during writing phase occurred");
                         outcome = ERROR_OCCURED;
                     }else{
-                        printf("operation avvenuta correttamente");
+                        printf("operation successfully completed");
                         outcome = POSITIVE;
                     }
                 }   
             } 
             //we delete the original file and rename the temporary one
+            //but unlocking file contacts file first
+            unlock(contacts, fl);
             fclose(contacts);
             remove(CONTACTS_PATH);
+
+            unlock(tmpFile, flTmp); //also unlocking the temporary file
             fclose(tmpFile);
             rename("temp.txt",CONTACTS_PATH);
-            
         }else{
             outcome = CONTACT_NOT_FOUND;
+            unlock(contacts, fl);
+            fclose(contacts);
         }
 
         return outcome;
@@ -611,6 +744,10 @@ int rewriteAddressBook(FILE * contacts, Message * data){
             FILE * tmpFile;
             tmpFile = fopen("temp.txt", "a+");
 
+            //locking temporary file so we can safely write data on it
+            struct flock * flTmp = lockWR(tmpFile, 0, EOF, F_SETLKW);
+
+           
             while(fgets(buffer, sizeof(buffer), contacts) != NULL){
                 char * name, * lastName, * phoneNumber;
                 name = strtok(buffer, " ");
@@ -639,13 +776,18 @@ int rewriteAddressBook(FILE * contacts, Message * data){
                 } 
             } 
             //we delete the original file and rename the temporary one
+            //but unlocking file contacts file first
+            unlock(contacts, fl);
             fclose(contacts);
             remove(CONTACTS_PATH);
+            unlock(tmpFile, flTmp); //also unlocking the temporary file
             fclose(tmpFile);
             rename("temp.txt",CONTACTS_PATH);
         
         }else{
             outcome = CONTACT_NOT_FOUND;
+            unlock(contacts, fl);
+            fclose(contacts);
         }
         return outcome;
     }
@@ -667,9 +809,9 @@ void to_hex(const unsigned char *hash, char *output, size_t length) {
 unsigned char * convertToSHA256(char * str, unsigned char * hash)
 {
     SHA256_CTX sha256;
-    sha256_init(&sha256);
-    sha256_update(&sha256, str, strlen(str));
-    sha256_final(&sha256, hash);
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, str, strlen(str));
+    SHA256_Final(hash, &sha256);
 }
   
 

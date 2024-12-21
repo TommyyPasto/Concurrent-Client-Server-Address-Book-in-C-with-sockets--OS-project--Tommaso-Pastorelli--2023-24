@@ -167,22 +167,31 @@ int main(int argc, char *argv[]) {
 
                 //still checking eventual reading/writing problems...
                 val = read(client_sock, &numContacts_t, sizeof(numContacts_t));
+                
                 if(val > -1){
 
-                    //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
-                    //printESITO...................................................
                     int numContacts = ntohl(numContacts_t);
+                    printf("num Contatti: %d\n", numContacts);
                     int size = sizeof(char) * numContacts * 53 + 1;
+                   
                     char buffer[size];
                     val = read(client_sock, buffer, size);
-                    listContacts(&buffer[1], numContacts);
-                    sleep(2);
+                     printf("size: %d\n", size);
+
+                    //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
+                    printOutcome(buffer[0]); 
+                    if(numContacts > 0){
+                        listContacts(&buffer[1], numContacts);
+                        sleep(2);
+                    }
                 }
             }
 
         }else{
+
+            //creating message 
             create_Message_String(message, data);
-            
+
             //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
             val = write(client_sock, message, BUFFER_SIZE);
             if(val > -1){
@@ -275,7 +284,7 @@ void printMenu(int logged){
         printf(YEL"  [2]"RESET" ADD a new contact\n");
         printf(YEL"  [3]"RESET" MODIFY an existing contact\n");
         printf(YEL"  [4]"RESET" DELETE a contact\n");
-        printf(YEL"  [5]"RESET" LOGOUT\n");
+        printf(YEL"  [-]"RESET" LOGOUT\n");
         printf(YEL"  [esc]"RESET" EXIT\n");
         printf("  ---------------------------------------------\n");
         printf("\n");
@@ -291,7 +300,7 @@ void printMenu(int logged){
         printf(GRN"  Choose an operation:"RESET"\n");
         printf("  ---------------------------------------------\n");
         printf(YEL"  [1]"RESET" LIST all contacts\n");
-        printf(RED"  [🔒] LOGIN TO SEE OTHER AVAILABLE OPERATIONS[press '5']\n");
+        printf(RED"  [🔒] LOGIN TO SEE OTHER AVAILABLE OPERATIONS[press '+']\n");
         printf(YEL"  [esc]"RESET" EXIT\n");
         printf("\n");
     }
@@ -333,14 +342,14 @@ Message * choose_operation(){
             switch(choice){
                 
                 case LISTING:
-                    data->operation = LISTING;
+                    data->operation = choice;
                     return data;
 
                 case INSERT: 
                 case DELETE:
                 case EDIT: 
                     data->operation = choice;
-                    
+
                     //checking name
                     printf(BLU"• Name: "RESET);
                     scanf("%s", data->name);
@@ -361,7 +370,7 @@ Message * choose_operation(){
 
                     //we also have to consider new values in case of editing of contacts
                     if(choice == EDIT){
-
+                        
                         //checking new name
                         printf(GRN"• New name: "RESET);
                         scanf("%s", data->new_name);
@@ -384,7 +393,10 @@ Message * choose_operation(){
                 
 
                 case LOGOUT: 
+                    data->operation = choice;
+
                     logged = 0;
+                    //sessionTOKEN = "\0";
                     //CHIEDI AL SERVER DI CHIUDERE IL FILE SOCKET CORRISPONDENTE E CHIUDI IL TUO LATO CLIENT
                     return data;
                     

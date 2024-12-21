@@ -8,18 +8,25 @@
 int main(int argc, char *argv[])
 {
 
-    /* Utype whence Ustart len 1pid */
-    struct flock fl = {F_UNLCK, SEEK_SET, 7, 14, 0};
-    int fd;
+    FILE * file;
     int fsize, offset;
     char buf[50];
 
     // Open the file that is passed as a command line argument to the program in Read and Write Mode
-    if ((fd = open("filetest.txt", O_RDWR)) == -1) // if Open is not successful exit from the program else proceed
+    if ((file = fopen("filetest.txt", "r+")) == -1) // if Open is not successful exit from the program else proceed
     {
         perror("can't open file");
         exit(1);
     }
+    
+    fseek(file, 0L, SEEK_END);
+    fsize = ftell(file); 
+    printf("size: %d", fsize);
+
+    /* Utype whence Ustart len 1pid */
+    struct flock fl = {F_UNLCK, SEEK_SET, 0, fsize, 0};
+
+    int fd = fileno(file);
 
     printf("File is Not Locked by any Process\n");
     printf("Press Enter to Lock the File\n");
@@ -28,7 +35,7 @@ int main(int argc, char *argv[])
     fl.l_type = F_WRLCK; // replacing F_UNLCK to F_WRLCK for the structure variable fl
     fl.l_pid = getpid(); // Replacing process id from © to current process id for the variable fl
 
-    if (fcntl(fd, F_SETLK, &fl) == -1) // If not able to lock the file exit, else proceed
+    if (fcntl(fd, F_SETLKW, &fl) == -1) // If not able to lock the file exit, else proceed
     {
         perror("can't set Exclusive Lock");
         exit(1);

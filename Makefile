@@ -10,15 +10,20 @@ UTILS_DIR = $(SRC_DIR)/Utils
 
 # File sorgenti
 CLIENT_SRC = $(CLIENT_DIR)/Client.c $(UTILS_DIR)/ClientUtils.c 
-SERVER_SRC = $(SERVER_DIR)/Server.c $(UTILS_DIR)/ServerUtils.c $(UTILS_DIR)/sha256.c
+SERVER_SRC = $(SERVER_DIR)/Server.c $(UTILS_DIR)/ServerUtils.c
 
 # File oggetto
 CLIENT_OBJ = $(CLIENT_DIR)/obj/Client.o $(UTILS_DIR)/obj/ClientUtils.o
-SERVER_OBJ = $(SERVER_DIR)/obj/Server.o $(UTILS_DIR)/obj/ServerUtils.o $(UTILS_DIR)/obj/sha256.o
+SERVER_OBJ = $(SERVER_DIR)/obj/Server.o $(UTILS_DIR)/obj/ServerUtils.o
 
 # Compilatore e flag
 CC = gcc
 CFLAGS = -Wall -Wextra -I$(CLIENT_DIR) -I$(SERVER_DIR) -I$(UTILS_DIR)
+
+LIB_PATH = /usr/lib/ssl
+LIB_NAME = ssl
+OPENSSL = -L$(LIB_PATH) -l$(LIB_NAME) -lcrypto
+
 
 # Regola principale per compilare entrambi gli eseguibili
 all: $(CLIENT_TARGET) $(SERVER_TARGET)
@@ -35,7 +40,7 @@ $(SERVER_TARGET): $(SERVER_OBJ)
 	if [ ! -d "$(SERVER_DIR)/bin" ]; then \
 		mkdir $(SERVER_DIR)/bin; \
 	fi
-	$(CC) $(SERVER_OBJ) -o $(SERVER_DIR)/bin/$(SERVER_TARGET)
+	$(CC) $(SERVER_OBJ) $(OPENSSL) -o $(SERVER_DIR)/bin/$(SERVER_TARGET)
 
 
 
@@ -55,7 +60,7 @@ $(UTILS_DIR)/obj/ClientUtils.o: $(UTILS_DIR)/ClientUtils.c $(UTILS_DIR)/ClientUt
 
 
 # Regole per i file oggetto del Server
-$(SERVER_DIR)/obj/Server.o: $(SERVER_DIR)/Server.c $(SERVER_DIR)/Server.h $(UTILS_DIR)/ServerUtils.h $(UTILS_DIR)/sha256.h
+$(SERVER_DIR)/obj/Server.o: $(SERVER_DIR)/Server.c $(SERVER_DIR)/Server.h $(UTILS_DIR)/ServerUtils.h
 	if [ ! -d "$(SERVER_DIR)/obj" ]; then \
 		mkdir $(SERVER_DIR)/obj; \
 	fi
