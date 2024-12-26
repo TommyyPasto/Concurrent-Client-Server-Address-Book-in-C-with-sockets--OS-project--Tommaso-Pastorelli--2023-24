@@ -50,7 +50,6 @@ struct sockaddr_in * buildSocketaddress(char * serverAddress, int serverPort){
 }
 
 
-//This function tries to connect the client to the server with the user's inserted data
 int connect_To_Server(char * serverAddress, int serverPort){
     int sock = 0;
     
@@ -69,7 +68,6 @@ int connect_To_Server(char * serverAddress, int serverPort){
 }
 
 
-//This function tries to reconnect to server through the socket passed as parameter
 int tryConnection(int sock, struct sockaddr_in * serv_addr){
     int outcome;
     //Connection to server
@@ -106,7 +104,6 @@ int tryConnection(int sock, struct sockaddr_in * serv_addr){
 }
     
 
-//Checks what is the outcome of a connection, specifically if there are too many clients connected on server
 int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_addr) {
     
     //receiving outcome
@@ -126,7 +123,6 @@ int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_ad
 }
 
 
-//handler for signal SIGINT(CTRL+C)
 void sigintHandler(int signum) {
     printf("\n\n");
     printf(YEL"               you are now exiting the program..."RESET);
@@ -136,178 +132,6 @@ void sigintHandler(int signum) {
 }
 
 
-//Application Main
-int main(int argc, char *argv[]) {
-    
-    char * address = (strcmp(argv[1], "localhost") == 0) ? "127.0.0.1" : argv[1];
-    int port = atoi(argv[2]);
-
-    system("clear || cls");
-
-    signal(SIGINT, sigintHandler);
-    //signal(SIGPIPE, sigpipeHandler);
-
-    //defining a space in memory for the token to be used for login and operations
-    sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
-
-    //connecting to server with users data passed on terminal line
-    client_sock = connect_To_Server(address, port);
-
-    //Defining a Message variable to contain user inserted data
-    Message * data;
-    data = malloc(sizeof(Message));
-    
-    //Defining a fixed size char array to fill it with the "data" values in known and fixed indexes
-    char message [BUFFER_SIZE];
-
-    struct sockaddr_in * serv_addr = buildSocketaddress(address, port);
-
-    //While the socket is still working the program keeps running
-    int val = 0;
-    while(1){
-
-        //using the choose operation function to build the data object values
-        data = choose_operation();
-
-        //if the choosen operation is listing the address book data we make a different type of operation, so we divide it from the rest of the operations
-        if(data->operation == LISTING){
-            
-            create_Message_String(message, data);
-            
-            //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
-            val = write(client_sock, message, BUFFER_SIZE);
-            if(val > 0){
-
-                /*first we receive from the server the number of contacts we will be receiving
-                so that we can prepare an adequate size array to contain all of those*/
-                int32_t numContacts_t;
-
-                //still checking eventual reading/writing problems...
-                val = read(client_sock, &numContacts_t, sizeof(numContacts_t));
-                if(val > 0){
-
-                    int numContacts = ntohl(numContacts_t);
-                    int size = sizeof(char) * numContacts * 53 + 1;
-                   
-                    char buffer[size];
-
-                    val = read(client_sock, buffer, size);
-                    if(val > 0){
-
-                        //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
-                        printOutcome(buffer[0]); 
-                        if(numContacts > 0){
-                            system("clear || cls");
-                            //printing menu on terminal
-                            printMenu(logged);
-                            listContacts(&buffer[1], numContacts);
-                            
-                            //asking if the user wants to save the results in a file
-                            char c;
-                            printf("Do you want to save these results in a file?[Y/n] ");
-                            scanf("%s", &c);
-                            
-                            clear_last_n_lines(1);
-                            if(c == 'Y')
-                            {
-
-                                char * newResultsFilePath = malloc(100 * sizeof(char));
-                                sprintf(newResultsFilePath, "%s%d.txt", RESULTS_PATH, fileNumCounter);
-                                if(saveRecordsInAFile(newResultsFilePath, &buffer[1], numContacts, 53) == POSITIVE){
-                                    printf(GRN "                  RESULTS SAVED IN FILE" RESET" '%s%d.txt'\n\n" , RESULTS_PATH, fileNumCounter);
-                                }
-
-                                fileNumCounter++;
-                            }
-                        }
-                    }else{
-                        printf(RED SERVER_DISCONNECTED_ERROR RESET);
-                        tryConnection(client_sock, serv_addr);
-                        continue;
-                    }
-
-                }else{
-                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
-                    tryConnection(client_sock, serv_addr);
-                    continue;
-                }
-            }
-            else{
-                printf(RED SERVER_DISCONNECTED_ERROR RESET);
-                tryConnection(client_sock, serv_addr);
-                continue;
-            }
-        }else{
-
-            //creating message 
-            create_Message_String(message, data);
-
-            //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
-            val = write(client_sock, message, BUFFER_SIZE);
-            if(val <= 0){
-                printf(RED SERVER_DISCONNECTED_ERROR RESET);
-                tryConnection(client_sock, serv_addr);
-                continue;
-            }
-            
-            //checking if the op. is LOGIN or not
-            if(data->operation == LOGIN){
-
-                //defining a 33 chars array to contain 1 byte of outcome and 32 bytes for the eventual token
-                char outcome[33];
-                val = read(client_sock, outcome, sizeof(outcome));
-                if(val <= 0){
-                    system("clear || cls");
-                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
-                    tryConnection(client_sock, serv_addr);
-                    continue;
-                }
-                else if(outcome[0] == POSITIVE && val > 0){
-                    
-                    system("clear || cls");
-                    //printing menu on terminal
-                    if(outcome[0] == POSITIVE)
-                        logged = 1;
-                    else
-                        logged = 0;
-                    
-                    printMenu(logged);
-                    
-                    printOutcome(outcome[0]);  
-
-                    //if the operation was completed successfully we write the login token for the current session into the sessionTOKEN variable
-                    strcpy(sessionTOKEN, &outcome[1]); 
-
-                    //and we modify the UI value for logged(or not) user
-                    logged = 1;
-                    printf("token: %s\n\n", sessionTOKEN, strlen(sessionTOKEN));
-                }
-            }else{
-                //doing the same thing for other operations
-                int32_t esito_t;
-                val = read(client_sock, &esito_t, sizeof(esito_t));
-                if(val <= 0){
-                    system("clear || cls");
-                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
-                    tryConnection(client_sock, serv_addr);
-                    continue;
-                }else{
-                    int esito = ntohl(esito_t);
-                    system("clear || cls");
-                    //printing menu on terminal
-                    printMenu(logged);
-                    if(data->operation != LOGOUT)          
-                        printOutcome(esito); 
-                }   
-            }
-            
-        }
-
-    }
-}
-
-
-//simple function for printing the correspondent string for every outcome value
 void printOutcome(int outcome){
     switch (outcome){
         case POSITIVE:
@@ -345,7 +169,6 @@ void printOutcome(int outcome){
 }
 
 
-//simple function to print the user menu on the terminal
 void printMenu(int logged){
     if(logged == 1){
     
@@ -383,7 +206,6 @@ void printMenu(int logged){
 }
 
 
-//Function which prints the users menu and returns the built Message variable
 Message * choose_operation(){
     if(first == 1){
         printMenu(logged);
@@ -593,8 +415,6 @@ Message * choose_operation(){
 }
 
 
-/*Function that builds the buffer message(message) to send to server with all necessary data contained in "data" and the 
- session token(if one was already created)*/
 void create_Message_String(char message[], Message * data){
     char * msg = &message[0];
     msg[0] = data->operation;
@@ -622,7 +442,6 @@ void create_Message_String(char message[], Message * data){
 }
 
 
-//lists contacts in the array contactList
 void listContacts(char * contactList, int numContacts){
     int i = 1;
     printf(BLU"\n[LISTA CONTATTI]\n"RESET);
@@ -642,8 +461,6 @@ void listContacts(char * contactList, int numContacts){
 }
 
 
-/*checks inserted data element, specify which one is to be checked on the second parameter("name", "last name", "phone number", "username" or "password")
-; returns 0 if check is ok, -1 if not ok, and -2 if type of data is not correct*/
 int checkInsertedData(char * dataValue, char * typeOfData){
 
     //case 1 --> it is name or last name
@@ -710,5 +527,183 @@ int checkInsertedData(char * dataValue, char * typeOfData){
     }
 
     return -2;    
+}
+
+
+
+/**
+ * @brief Main function of the server.  Handles client connections, forks child processes, and processes client requests.
+ *
+ * @param argc Argument count.
+ * @param argv Argument array.
+ * @return 0 on successful termination, or a error code.
+ */
+int main(int argc, char *argv[]) {
+    
+    char * address = (strcmp(argv[1], "localhost") == 0) ? "127.0.0.1" : argv[1];
+    int port = atoi(argv[2]);
+
+    system("clear || cls");
+
+    signal(SIGINT, sigintHandler);
+    //signal(SIGPIPE, sigpipeHandler);
+
+    //defining a space in memory for the token to be used for login and operations
+    sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
+
+    //connecting to server with users data passed on terminal line
+    client_sock = connect_To_Server(address, port);
+
+    //Defining a Message variable to contain user inserted data
+    Message * data;
+    data = malloc(sizeof(Message));
+    
+    //Defining a fixed size char array to fill it with the "data" values in known and fixed indexes
+    char message [BUFFER_SIZE];
+
+    struct sockaddr_in * serv_addr = buildSocketaddress(address, port);
+
+    //While the socket is still working the program keeps running
+    int val = 0;
+    while(1){
+
+        //using the choose operation function to build the data object values
+        data = choose_operation();
+
+        //if the choosen operation is listing the address book data we make a different type of operation, so we divide it from the rest of the operations
+        if(data->operation == LISTING){
+            
+            create_Message_String(message, data);
+            
+            //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
+            val = write(client_sock, message, BUFFER_SIZE);
+            if(val > 0){
+
+                /*first we receive from the server the number of contacts we will be receiving
+                so that we can prepare an adequate size array to contain all of those*/
+                int32_t numContacts_t;
+
+                //still checking eventual reading/writing problems...
+                val = read(client_sock, &numContacts_t, sizeof(numContacts_t));
+                if(val > 0){
+
+                    int numContacts = ntohl(numContacts_t);
+                    int size = sizeof(char) * numContacts * 53 + 1;
+                   
+                    char buffer[size];
+
+                    val = read(client_sock, buffer, size);
+                    if(val > 0){
+
+                        //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
+                        printOutcome(buffer[0]); 
+                        if(numContacts > 0){
+                            system("clear || cls");
+                            //printing menu on terminal
+                            printMenu(logged);
+                            listContacts(&buffer[1], numContacts);
+                            
+                            //asking if the user wants to save the results in a file
+                            char c;
+                            printf("Do you want to save these results in a file?[Y/n] ");
+                            scanf("%s", &c);
+                            
+                            clear_last_n_lines(1);
+                            if(c == 'Y')
+                            {
+
+                                char * newResultsFilePath = malloc(100 * sizeof(char));
+                                sprintf(newResultsFilePath, "%s%d.txt", RESULTS_PATH, fileNumCounter);
+                                if(saveRecordsInAFile(newResultsFilePath, &buffer[1], numContacts, 3, 53, " ", "\n") == POSITIVE){
+                                    printf(GRN "                  RESULTS SAVED IN FILE" RESET" '%s%d.txt'\n\n" , RESULTS_PATH, fileNumCounter);
+                                }
+
+                                fileNumCounter++;
+                            }
+                        }
+                    }else{
+                        printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                        tryConnection(client_sock, serv_addr);
+                        continue;
+                    }
+
+                }else{
+                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                    tryConnection(client_sock, serv_addr);
+                    continue;
+                }
+            }
+            else{
+                printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                tryConnection(client_sock, serv_addr);
+                continue;
+            }
+        }else{
+
+            //creating message 
+            create_Message_String(message, data);
+
+            //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
+            val = write(client_sock, message, BUFFER_SIZE);
+            if(val <= 0){
+                printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                tryConnection(client_sock, serv_addr);
+                continue;
+            }
+            
+            //checking if the op. is LOGIN or not
+            if(data->operation == LOGIN){
+
+                //defining a 33 chars array to contain 1 byte of outcome and 32 bytes for the eventual token
+                char outcome[33];
+                val = read(client_sock, outcome, sizeof(outcome));
+                if(val <= 0){
+                    system("clear || cls");
+                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                    tryConnection(client_sock, serv_addr);
+                    continue;
+                }
+                else if(outcome[0] == POSITIVE && val > 0){
+                    
+                    system("clear || cls");
+                    //printing menu on terminal
+                    if(outcome[0] == POSITIVE)
+                        logged = 1;
+                    else
+                        logged = 0;
+                    
+                    printMenu(logged);
+                    
+                    printOutcome(outcome[0]);  
+
+                    //if the operation was completed successfully we write the login token for the current session into the sessionTOKEN variable
+                    strcpy(sessionTOKEN, &outcome[1]); 
+
+                    //and we modify the UI value for logged(or not) user
+                    logged = 1;
+                    printf("token: %s\n\n", sessionTOKEN, strlen(sessionTOKEN));
+                }
+            }else{
+                //doing the same thing for other operations
+                int32_t esito_t;
+                val = read(client_sock, &esito_t, sizeof(esito_t));
+                if(val <= 0){
+                    system("clear || cls");
+                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                    tryConnection(client_sock, serv_addr);
+                    continue;
+                }else{
+                    int esito = ntohl(esito_t);
+                    system("clear || cls");
+                    //printing menu on terminal
+                    printMenu(logged);
+                    if(data->operation != LOGOUT)          
+                        printOutcome(esito); 
+                }   
+            }
+            
+        }
+
+    }
 }
 

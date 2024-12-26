@@ -1,5 +1,12 @@
-#include "/home/tommy/ProgettoSO/Utils/ClientUtils.h"
+/**
+ * @file Client.h
+ * @brief This header file declares functions and data structures for the client
+ * application, including network communication, user interface elements, and message handling.
+ */
+#ifndef CLIENT_H
+#define CLIENT_H
 
+#include "/home/tommy/ProgettoSO/Utils/ClientUtils.h" 
 
 
 // RESULTS PATH
@@ -81,12 +88,22 @@
 
 
 // TOKEN TYPE AND LENGTH
+/**
+ * @brief Type definition for a session token.
+ */
 typedef char * TOKEN;
+/**
+ * @brief Length of the session token string.
+ */
 #define TOKEN_LENGTH_ 32
 
 
 
 // MESSAGE TYPE
+/**
+ * @brief Structure for messages exchanged between client and server.
+ * Contains fields for operation code, contact details, user credentials, etc.
+ */
 typedef struct{
     char operation;
     char name[20];
@@ -97,23 +114,101 @@ typedef struct{
     char new_phoneNumber[10];
     char username[20];
     char psw[20];
+    char token[32];  // Add token field to the Message struct
 }Message;
 
 
 
 // FUNCTIONS PROTOTYPES
+/**
+ * @brief Builds a sockaddr_in structure for the server.
+ * 
+ * @param serverAddress The server's IP address.
+ * @param serverPort The server's port number.
+ * @return A pointer to the sockaddr_in structure.  The caller is responsible for freeing the allocated memory.
+ */
 struct sockaddr_in * buildSocketaddress(char * serverAddress, int serverPort);
+
+
+
+/**
+ * @brief Initiates a connection to the server.
+ *
+ * @param serverAddress The server's IP address.
+ * @param serverPort The server's port number.
+ * @return The socket file descriptor on success, a negative value on error.
+ */
 int connect_To_Server(char * serverAddress, int serverPort);
+
+
+
+/**
+ * @brief Attempts to connect to the server using the given socket and address.  This function will retry the connection if the initial attempt fails or if there are too many clients connected.
+ *
+ * @param sock The socket file descriptor.
+ * @param serv_addr  Pointer to the sockaddr_in structure.
+ * @return The socket file descriptor on successful connection, or it exits on fatal error.
+ */
 int tryConnection(int sock, struct sockaddr_in * serv_addr);
 
+
+
+/**
+ * @brief Presents the user with a menu of operations and returns their choice.
+ * This function also handles user input for each operation.
+ *
+ * @return A pointer to the Message struct filled with user's choices. The caller is responsible for freeing the allocated memory.
+ */
 Message * choose_operation();
-void create_Message_String(char messaggio[], Message * data);
+
+
+
+/**
+ * @brief Creates a string representation of a Message struct.
+ *
+ * @param message The character array to store the string representation.
+ * @param data A pointer to the Message struct.
+ */
+void create_Message_String(char message[], Message * data);
+
+
+
+/**
+ * @brief Lists contacts received from the server.
+ *
+ * @param listaContatti character pointer containing list of contacts and the outcome as its first byte
+ * @param numContatti The number of contacts in the list.
+ */
 void listContacts(char * listaContatti, int numContatti);
 
+
+
+/**
+ * @brief Prints the main menu for the user interface based on log in status.
+ *
+ * @param logged  1 if user is currently logged, 0 otherwise.
+ */
 void printMenu(int logged);
+
+
+
+/**
+ * @brief Prints the outcome of an operation to the console.
+ *
+ * @param outcome The outcome code to print.
+ */
 void printOutcome(int outcome);
 
-int checkAlphaNumeric(char * string);
-int checkNumber(char * string);
+
+
+/**
+ * @brief Validates user input for name, last name, phone number, username, and password.
+ *
+ * @param dataValue The input string to validate.
+ * @param typeOfData The type of data being validated ("name", "last name", "phone number", "username", or "password").
+ * @return 0 if the input is valid, -1 otherwise, and -2 if typeOfData isn't one of the options above.
+ */
 int checkInsertedData(char * dataValue, char * typeOfData);
 
+
+#endif

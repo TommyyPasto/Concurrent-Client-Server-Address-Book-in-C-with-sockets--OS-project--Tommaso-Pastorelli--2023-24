@@ -61,12 +61,6 @@ int connectedClients = 0;
 int pid;
 
 
-/**
- * @brief Sets up a socket for the server.
- *
- * @param option Socket option for `setsockopt`. Typically 1 to enable `SO_REUSEADDR`.
- * @return The file descriptor of the created socket, or a negative value on error.
- */
 int socketSetUp(int option){
     int server_socket;
     
@@ -88,13 +82,6 @@ int socketSetUp(int option){
 
 
 
-/**
- * @brief Binds a socket to a specified port.
- *
- * @param socket The file descriptor of the socket to bind.
- * @param port The port number to bind to.
- * @return A pointer to the sockaddr_in structure, or NULL on error.  Memory allocated for sockaddr_in is not freed by the function and should be handled by the caller.
- */
 struct sockaddr_in * binding(int socket, int port){
     struct sockaddr_in * address;
     address = malloc(sizeof(struct sockaddr_in));
@@ -116,10 +103,6 @@ struct sockaddr_in * binding(int socket, int port){
 
 
 
-/**
- * @brief Signal handler for SIGINT (Ctrl+C). Closes sockets and exits gracefully.
- * @param signum The signal number (should be SIGINT).
- */
 void sigintHandler(int signum) {
     close(server_socket);
     close(client_socket);
@@ -128,10 +111,6 @@ void sigintHandler(int signum) {
 
 
 
-/**
- * @brief Signal handler for SIGCHLD (child process terminated). Decrements the connected client count.
- * @param signum The signal number (should be SIGCHLD).
- */
 void sigchldHandler(int signum) {
     printf("\n\nEXITING NOW WITH EXIT CODE:");
     
@@ -158,11 +137,6 @@ void sigpipeHandler(int signum) {
 
 
 
-/**
- * @brief Rejects a client connection due to too many clients being connected.
- * Sends an appropriate error message to the client.
- * @param client_socket The client socket to reject.
- */
 void rejectConnection(int client_socket){
     int outcome = TOO_MANY_CLIENTS_CONNECTED;
     int32_t outcome_uint = htonl(outcome);
@@ -171,10 +145,6 @@ void rejectConnection(int client_socket){
 
 
 
-/**
- * @brief Accepts a client connection after verifying available space.
- * @param client_socket The client socket to accept.
- */
 void acceptConnection(int client_socket){
     int outcome = CONNECTION_ACCEPTED;
     int32_t outcome_uint = htonl(outcome);
@@ -183,12 +153,6 @@ void acceptConnection(int client_socket){
 
 
 
-/**
- * @brief Executes the requested operation based on the 'data->operation' field.
- *
- * @param data  Message struct containing client request data.
- * @return An integer status code indicating the outcome of the operation.
- */
 int execute_operation(Message * data){
     if(data->operation == INSERT){
         return insertContact(data);
@@ -212,116 +176,6 @@ int execute_operation(Message * data){
 
 
 
-/**
- * @brief Locks a file for reading.
- *
- * @param stream  File pointer.
- * @param start  Starting offset for the lock.
- * @param end    Ending offset for the lock. Use EOF for the end of the file.
- * @param cmd    fcntl command (e.g., F_SETLKW, F_SETLK).
- * @return A pointer to the flock structure used for locking.  The memory allocated for flock should be handled by the caller.
- */
-struct flock * lockRD(FILE * stream, int start, int end, int cmd){
-    if(end == EOF){
-        //getting the end of file pointer value
-        fseek(stream, 0, SEEK_END);
-        end = ftell(stream);
-    }
-
-    //getting the file descr. of the add.book file.
-    int fd = fileno(stream);
-    
-    struct flock * fl = malloc(sizeof(struct flock));
-    fl->l_type = F_RDLCK;
-    fl->l_whence = SEEK_SET;
-    fl->l_start = start;
-    fl->l_len = end;
-    fl->l_pid = getpid();
-    
-    // If not able to lock the file exit, else proceed
-    if (fcntl(fd, cmd, fl) == -1) 
-    {
-        perror("can't set lock\n\n");
-        exit(1);
-    }else{
-        //printf("Process %d locked the file\n\n" , getpid());
-    }
-
-    return fl;
-}
-
-
-
-/**
- * @brief Locks a file for writing.
- *
- * @param stream  File pointer.
- * @param start  Starting offset for the lock.
- * @param end    Ending offset for the lock. Use EOF for the end of the file.
- * @param cmd    fcntl command (e.g., F_SETLKW, F_SETLK).
- * @return A pointer to the flock structure used for locking.
- */
-struct flock * lockWR(FILE * stream, int start, int end, int cmd){
-    if(end == EOF){
-        //getting the end of file pointer value
-        fseek(stream, 0, SEEK_END);
-        end = ftell(stream);
-    }
-
-    //getting the file descr. of the add.book file.
-    int fd = fileno(stream);
-    
-    struct flock * fl = malloc(sizeof(struct flock));
-    fl->l_type = F_WRLCK;
-    fl->l_whence = SEEK_SET;
-    fl->l_start = start;
-    fl->l_len = end;
-    fl->l_pid = getpid();
-    
-    // If not able to lock the file exit, else proceed
-    if (fcntl(fd, cmd, fl) == -1) 
-    {
-        perror("can't set lock\n");
-        fflush(stdout);
-        exit(1);
-    }else{
-        //printf("Process %d locked the file exclusively\n" , getpid());
-        fflush(stdout);
-    }
-
-    return fl;
-}
-
-
-
-
-/**
- * @brief Unlocks a previously locked file.
- *
- * @param stream File pointer.
- * @param fl     Pointer to the flock structure used for locking.
- * @return 0 if the file was locked, -1 if it was not locked.
- */
-int unlock(FILE * stream, struct flock * fl){
-    if(fl->l_type != F_UNLCK){
-        fl->l_type = F_UNLCK;
-        //printf("file unlocked\n");
-        fflush(stdout);
-        return 0;
-    }else{
-        //printf("file was not locked\n");
-        fflush(stdout);
-        return -1;
-    }
-}
-
-
-
-/**
- * @brief Reads all contacts from the address book file.
- *
- * @return A character array containing the contacts. The first two bytes contain status information{3: "ZERO_CONTACTS_SAVED" or 0: "POSITIVE"}.
- */
 char * readContacts(){
     logAnEvent(LISTING, (Message *) NULL, client_ip, getCurrentTimeStr());
     int nContacts;
@@ -335,12 +189,12 @@ char * readContacts(){
     //locking file
     struct flock * fl = lockRD(contacts, 0, EOF, F_SETLKW);
 
-    nContacts = numberOfContacts(contacts);
+    nContacts = numberOfRecords(contacts, 53);
 
     contactsList = malloc(2 + nContacts * 53 * sizeof(char));
 
     if(nContacts == 0){
-        unlock(contacts, fl);
+        unlockFile(contacts, fl);
         contactsList[1] = ZERO_CONTACTS_SAVED;
         return contactsList;
     }
@@ -356,7 +210,7 @@ char * readContacts(){
         i++;
     }
 
-    unlock(contacts, fl);
+    unlockFile(contacts, fl);
     fclose(contacts);
 
     contactsList[1] = POSITIVE;
@@ -366,14 +220,8 @@ char * readContacts(){
 
 
 
-/**
- * @brief Inserts a new contact into the address book.
- *
- * @param data  The contact data.
- * @return The outcome of the operation.
- */
 int insertContact(Message * data){
-    printToken();
+
     fflush(stdout);
 
     logAnEvent(INSERT, data, client_ip, getCurrentTimeStr());
@@ -406,7 +254,7 @@ int insertContact(Message * data){
 
     //unlocking and closing file
     printf("%d is unlocking file...\n", getpid());
-    unlock(contacts, fl);
+    unlockFile(contacts, fl);
     fclose(contacts);
 
     return outcome;
@@ -414,12 +262,6 @@ int insertContact(Message * data){
 
 
 
-/**
- * @brief Edits an existing contact in the address book.
- *
- * @param data  The old + new contact data.
- * @return The outcome of the operation.
- */
 int editContact(Message * data){
     
     logAnEvent(EDIT, data, client_ip, getCurrentTimeStr());
@@ -459,12 +301,6 @@ int editContact(Message * data){
 
 
 
-/**
- * @brief Deletes a contact from the address book.
- *
- * @param data  The contact data.
- * @return The outcome of the operation.
- */
 int deleteContact(Message * data){
     logAnEvent(DELETE, data, client_ip, getCurrentTimeStr());
     return rewriteAddressBook(data);
@@ -472,12 +308,6 @@ int deleteContact(Message * data){
 
 
 
-/**
- * @brief Verifies if a given token matches the current session token.
- *
- * @param token  The token to check.
- * @return 1 if the token matches, -1 otherwise.
- */
 int login(Message * data){
 
     //we allocate memory for the token
@@ -536,7 +366,7 @@ int login(Message * data){
         loginOutcome = USER_NOT_FOUND;
     }
 
-    unlock(users, fl);
+    unlockFile(users, fl);
     fclose(users);
     
     return loginOutcome;  
@@ -544,12 +374,6 @@ int login(Message * data){
 
 
 
-/**
- * @brief Verifies if a given token matches the current session token.
- *
- * @param token  The token to check.
- * @return 1 if the token matches, -1 otherwise.
- */
 int checkLoginSession(TOKEN token){
     printf("ecco il token: (length = %d)%s | (length = %d)%s\n", strlen(token), token, strlen(sessionToken), sessionToken);
     printf("%d", strcmp(token, sessionToken));
@@ -560,11 +384,6 @@ int checkLoginSession(TOKEN token){
 
 
 
-/**
- * @brief Handles user logout.
- *
- * @param token The session token of the user logging out.
- */
 void logout(Message * data){
     logAnEvent(LOGOUT, data, client_ip, getCurrentTimeStr());
     free(sessionToken);
@@ -572,12 +391,6 @@ void logout(Message * data){
 
 
 
-/**
- * @brief Parses a message string into a Message struct.
- *
- * @param msg The message string.
- * @return A pointer to the allocated Message struct, or NULL on error.
- */
 Message * deconstruct_Message_String(char * msg){
     Message * data  = malloc(sizeof (Message));
     data->operation = msg[0];
@@ -622,15 +435,6 @@ Message * deconstruct_Message_String(char * msg){
 
 
 
-/**
- * @brief Searches for a user and sets the file pointer.
- *
- * @param users File pointer to the users file.
- * @param data User data to search for.
- * @return fseek result, or -1 if not found.
- * @pre Users file open in read mode.
- * @post File pointer at user record, or undefined if not found.
- */
 int search_And_Set_UserIndex(FILE * users, Message * data){
     char buffer[86];
     fseek(users, 0, SEEK_SET);
@@ -645,15 +449,6 @@ int search_And_Set_UserIndex(FILE * users, Message * data){
 
 
 
-/**
- * @brief Searches for a contact and sets the file pointer.
- *
- * @param contacts File pointer to the contacts file.
- * @param data Contact data.
- * @return fseek result, or -1 if not found.
- * @pre Contacts file open in read mode.
- * @post File pointer at contact record, or undefined if not found.
- */
 int search_And_Set_ContactIndex(FILE * contacts, Message * data){
     char buffer[53];
     fseek(contacts, 0, SEEK_SET);
@@ -670,19 +465,11 @@ int search_And_Set_ContactIndex(FILE * contacts, Message * data){
 
 
 
-/**
- * @brief Counts contacts in the address book file.
- *
- * @param contacts  File pointer to open file.
- * @return Number of contacts.
- * @pre Contacts file open in read mode.
- * @post File pointer at end of file.
- */
-int numberOfContacts(FILE * contacts){
-    char buffer[53];
+int numberOfRecords(FILE * file, int recordSize){
+    char buffer[recordSize];
     int count = 0;
-    fseek(contacts, 0, SEEK_SET);
-    for (char c = getc(contacts); c != EOF; c = getc(contacts))
+    fseek(file, 0, SEEK_SET);
+    for (char c = getc(file); c != EOF; c = getc(file))
         if (c == '\n') // Increment count if this character is newline
             count = count + 1;
 
@@ -691,13 +478,6 @@ int numberOfContacts(FILE * contacts){
 
 
 
-/**
- * @brief  Updates or removes a contact in the address book file.
- * 
- * @param data Contact details (including new details for editing).
- * @return Operation outcome (success, not found, or error).
- * @pre Address book file must exist.
- */
 int rewriteAddressBook(Message * data){
     int outcome;
     char buffer[53];
@@ -745,16 +525,16 @@ int rewriteAddressBook(Message * data){
 
             //we delete the original file and rename the temporary one
             //but unlocking file contacts file first
-            unlock(contacts, fl);
+            unlockFile(contacts, fl);
             fclose(contacts);
             remove(CONTACTS_PATH);
 
-            unlock(tmpFile, flTmp); //also unlocking the temporary file
+            unlockFile(tmpFile, flTmp); //also unlocking the temporary file
             fclose(tmpFile);
             rename("temp.txt",CONTACTS_PATH);
         }else{
             outcome = CONTACT_NOT_FOUND;
-            unlock(contacts, fl);
+            unlockFile(contacts, fl);
             fclose(contacts);
         }
 
@@ -806,16 +586,16 @@ int rewriteAddressBook(Message * data){
             } 
             //we delete the original file and rename the temporary one
             //but unlocking file contacts file first
-            unlock(contacts, fl);
+            unlockFile(contacts, fl);
             fclose(contacts);
             remove(CONTACTS_PATH);
-            unlock(tmpFile, flTmp); //also unlocking the temporary file
+            unlockFile(tmpFile, flTmp); //also unlocking the temporary file
             fclose(tmpFile);
             rename("temp.txt",CONTACTS_PATH);
         
         }else{
             outcome = CONTACT_NOT_FOUND;
-            unlock(contacts, fl);
+            unlockFile(contacts, fl);
             fclose(contacts);
         }
         return outcome;
@@ -824,91 +604,6 @@ int rewriteAddressBook(Message * data){
 
 
 
-/**
- * @brief Converts hash to hexadecimal string.
- * @param hash Hash value.
- * @param output Output buffer (must be large enough).
- * @param length Hash length.
- */
-void to_hex(const unsigned char *hash, char *output, size_t length) {
-    for (size_t i = 0; i < length; i++) {
-        sprintf(output + (i * 2), "%02x", hash[i]);
-    }
-    output[length * 2] = '\0';
-}
-
-
-
-/**
- * @brief Computes SHA256 hash of a string.
- * @param str Input string.
- * @param hash Output buffer (at least 32 bytes).
- * @return Pointer to the hash.
- */
-unsigned char * convertToSHA256(char * str, unsigned char * hash)
-{
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, str, strlen(str));
-    SHA256_Final(hash, &sha256);
-}
-  
-
-
-/**
- * @brief Generates a random alphanumeric token.
- * @param token Output buffer (must be large enough).
- * @param length Token length.
- */
-void gen_token(TOKEN token, size_t length) {
-    char charset[] = "0123456789"
-                     "abcdefghijklmnopqrstuvwxyz"
-                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    int index;
-	int i = 0;
-    srand(time(NULL));
-    while (length-- > 0) {
-        index = rand() % (sizeof(charset) - 1);
-        token[i++]= charset[index];
-    }
-    token[i] = '\0';
-} 
-
-
-
-/**
- * @brief Gets the current time as a string.
- * @return A dynamically allocated string containing the current time.  The caller is responsible for freeing the memory.
- */
-char * getCurrentTimeStr(){
-    
-    time_t rawtime;
-	time ( &rawtime );
-  	struct tm * timeinfo = localtime ( &rawtime );
-
-	char * strTMP = asctime(timeinfo);
-    int size = (int)strcspn(strTMP, "\n");
-	
-    //copying the time string without \n
-    char * time_str = malloc((size+1) * sizeof(char));
-	strncpy(time_str, strTMP, size);
-
-	time_str[size] = '\0';
-
-    return time_str;
-}
-
-
-
-/**
- * @brief Logs an event to the server's log file.
- *
- * @param eventCode  The code representing the event.
- * @param data       A pointer to a Message struct containing data related to the event (may be NULL).
- * @param address    The IP address of the client involved in the event.
- * @param time       A string representing the timestamp of the event.
- * @return An integer status code indicating the outcome.
- */
 int logAnEvent(int eventCode, Message * data, char * address, char * time){
     FILE * logfile = fopen(LOG_PATH, "a+");
     struct flock * fl = lockWR(logfile, 0, EOF, F_SETLKW);
@@ -917,6 +612,8 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
     switch(eventCode){
         case SUCCESSFUL_CONNECTION_ATTEMPT:
             outcome = fprintf(logfile, "[%s] Client %s connected successfully (process with PID: %d created)\n", time, address, getpid());
+            printf("errore: %d\n", outcome);
+            fflush(stdout);
             break;
         case UNSUCCESSFUL_CONNECTION_ATTEMPT:
             outcome = fprintf(logfile, "[%s] Client %s connected unsuccessfully(too many clients connected)\n", time, address);
@@ -949,7 +646,11 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
             outcome = ERROR_OCCURED;
             break;
     }
-    unlock(logfile, fl);
+    
+    unlockFile(logfile, fl);
+    printf("ci sono\n");
+    fflush(stdout);
+    
     fclose(logfile);
 
     return outcome;
@@ -957,31 +658,12 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
 
 
 
-void printToken(){
-    printf("\nTOKENS:\n");
-    printf("%s\n", sessionToken);
-    printf("------------------------------:\n");
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /**
  * @brief Main function of the server.  Handles client connections, forks child processes, and processes client requests.
  *
  * @param argc Argument count.
- * @param argv Argument vector.
- * @return 0 on successful termination, or a negative error code.
+ * @param argv Argument array.
+ * @return 0 on successful termination, or a error code.
  */
 int main(int argc, char *argv[]) {
 
@@ -1076,6 +758,7 @@ int main(int argc, char *argv[]) {
             signal(SIGPIPE, sigpipeHandler);
 
             //saving the pid(used for logging right after)
+
             pid = getpid();
             logAnEvent(SUCCESSFUL_CONNECTION_ATTEMPT, (Message *) NULL, client_ip, acceptTime);
 
@@ -1148,5 +831,4 @@ int main(int argc, char *argv[]) {
         }
         printf("server: got connection from %s\n", inet_ntoa(client_address->sin_addr));     
     }
-
 }

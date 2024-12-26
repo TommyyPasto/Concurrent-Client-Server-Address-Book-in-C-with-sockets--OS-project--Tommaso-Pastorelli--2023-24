@@ -5,6 +5,7 @@ int checkFileOpened(char * pathname){
     return fd;
 }
 
+
 void clear_last_n_lines(int n) {
     for (int i = 0; i < n; i++) {
         printf("\033[F"); // Sposta il cursore su di una riga
@@ -12,7 +13,7 @@ void clear_last_n_lines(int n) {
     }
 }
 
-//checks the presence of chars different from alpha-numeric ones in the string(0 if ok, -1 if not)
+
 int checkAlphaNumeric(char * string){
     int length = strlen(string);
     for(int i = 0; i < length; i++){
@@ -24,7 +25,7 @@ int checkAlphaNumeric(char * string){
     return 0;
 }
 
-//check if the string is a number(0 if ok, -1 if not)
+
 int checkNumber(char * string){
     int length = strlen(string);
     for(int i = 0; i < length; i++){
@@ -36,24 +37,32 @@ int checkNumber(char * string){
     return 0;
 }
 
-int saveRecordsInAFile(char * filepath, char * msg, int nOfRecords, int recordsLength){
+
+int saveRecordsInAFile(char * filepath, char * msg, int nOfRecords, int nOfFields, int recordsLength,  const char *__restrict__ delim, const char *__restrict__  endOfRecDelim){
 
     int outcome;
     FILE * resultsFile = fopen(filepath, "w+");
 
     //Connection to server
     for(int i = 0; i < nOfRecords; i++){
-        char * name, * lastName, * phoneNumber;
+        char * fields[nOfRecords];
         char contact[recordsLength];
         strncpy(contact, &msg[i * recordsLength], recordsLength);
-        
-        name = strtok(contact, " ");
-        lastName = strtok(NULL, " ");
-        phoneNumber = strtok(NULL, "\n");
 
-        int nCharWritten = fprintf(resultsFile, "%s %s %s\n", name, lastName, phoneNumber);
+        int j = 0;
+        for(j = 0; j < nOfFields-1; j++){
+            fields[j] = (j == 0) ? strtok(contact, delim) : strtok(NULL, delim);
+        }
+        fields[j] = strtok(NULL, endOfRecDelim);
+
+
+        int nCharWritten = 0;
+        for(j = 0; j < nOfFields; j++){
+            nCharWritten += (j < nOfFields-1) ? fprintf(resultsFile, "%s ", fields[j]) : fprintf(resultsFile, "%s", fields[j]);
+        }
+        nCharWritten += fprintf(resultsFile, "\n");
         
-        if(strlen(name) + strlen(lastName) + strlen(phoneNumber) + 3 != nCharWritten || nCharWritten == -1){
+        if(nCharWritten == -1){
             printf(RED "            error during writing phase occurred\n\n" RESET);
             outcome = -1;
             break;
