@@ -1,4 +1,0 @@
-/* struct node{
-    char  value;
-
-} */

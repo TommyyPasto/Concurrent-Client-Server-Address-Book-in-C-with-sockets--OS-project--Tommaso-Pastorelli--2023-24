@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
+#include <signal.h>
 
 #define RED   "\033[1;31m"
 #define GRN   "\033[1;32m"
@@ -15,8 +17,6 @@
 #define RESET "\x1B[0m"
 
 
-void printMhanz();
-
-
+int saveRecordsInAFile(char * filepath, char * msg, int nOfRecords, int recordsLength);
 
 

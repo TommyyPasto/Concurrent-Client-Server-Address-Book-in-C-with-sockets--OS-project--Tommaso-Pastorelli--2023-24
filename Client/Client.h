@@ -1,17 +1,15 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <fcntl.h>
 #include "/home/tommy/ProgettoSO/Utils/ClientUtils.h"
-#include <signal.h>
 
 
-// CONNECTION DATA:
 
-#define SERVER_PORT 13000
-#define SERVER_ADDRESS "127.0.0.1"
+// RESULTS PATH
+
+#define RESULTS_PATH "/home/tommy/ProgettoSO/Client/results/AddressBook"
+
+
+
+// MESSAGE LENGTH:
+
 #define BUFFER_SIZE 173
 
 
@@ -26,7 +24,8 @@
 #define TRYING_ILLEGAL_ACCESS 4
 #define PASSWORD_NOT_CORRECT 5
 #define USER_NOT_FOUND 6
-#define TOO_MANY_CLIENTS_CONNECTED 7
+#define CONNECTION_ACCEPTED 7
+#define TOO_MANY_CLIENTS_CONNECTED 8
 
 
 
@@ -40,7 +39,8 @@
 #define TRYING_ILLEGAL_ACCESS_STR "ERR_CODE:[4] -> ILLEGAL ACCESS TRIED (such operation is only for logged clients)"
 #define PASSWORD_NOT_CORRECT_STR "ERR_CODE:[5] -> INCORRECT PASSWORD! try again"
 #define USER_NOT_FOUND_STR "ERR_CODE:[6] -> NO SUCH USER FOUND"
-#define TOO_MANY_CLIENTS_CONNECTED_STR "ERR_CODE:[7] -> NO SUCH USER FOUND"
+#define CONNECTION_ACCEPTED_STR "CONNECTION ACCEPTED"
+#define TOO_MANY_CLIENTS_CONNECTED_STR "ERR_CODE:[8] -> TOO MANY CLIENTS CONNECTED"
 
 
 

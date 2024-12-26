@@ -29,41 +29,72 @@
 #include "Server.h"
 
 
-//we keep an array of tokens, specifically there will be 10, the max number of connected client allowed at the same time
-TOKEN * sessionTokens;
-int newSessionTokenIndex = 0;
+/**
+ * @brief Global pointer to the current session token.  This token is used
+ * to authenticate client requests after login.  It should be initialized during the login process.
+ */
+TOKEN * sessionToken;
 
 
 
-/// @brief used for socket set up
-/// @param option, the option for socket setup 
-/// @return the socket's file descriptor
+/**
+ * @brief Sockets for Server side and new clients
+ */
+int server_socket, client_socket;
+
+
+/*
+* @brief address of the current served client
+*/
+char client_ip[20]; 
+
+
+/**
+ * @brief Global counter for the number of currently connected clients.
+ */
+int connectedClients = 0;
+
+
+/**
+ * @brief pid used for logging
+ */
+int pid;
+
+
+/**
+ * @brief Sets up a socket for the server.
+ *
+ * @param option Socket option for `setsockopt`. Typically 1 to enable `SO_REUSEADDR`.
+ * @return The file descriptor of the created socket, or a negative value on error.
+ */
 int socketSetUp(int option){
-    int server_fd;
+    int server_socket;
     
     // Creation of socket's fd
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+    if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("socket failed");
         exit(EXIT_FAILURE);
     }
     
     //using option to indicate an optional value for socket options in "setsocketopt"
     //if SO socket is not closed we reuse it
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1) {
         perror("Errore in setsockopt");
-        close(server_fd);
+        close(server_socket);
         exit(EXIT_FAILURE);
     }
-    return server_fd;
+    return server_socket;
 }
 
 
 
-
-/// @brief //used for binding
-/// @param socket the sockets fd
-/// @param port the port for connection
-/// @return the internet socket address(sockaddr_in * type)
+/**
+ * @brief Binds a socket to a specified port.
+ *
+ * @param socket The file descriptor of the socket to bind.
+ * @param port The port number to bind to.
+ * @return A pointer to the sockaddr_in structure, or NULL on error.  Memory allocated for sockaddr_in is not freed by the function and should be handled by the caller.
+ */
 struct sockaddr_in * binding(int socket, int port){
     struct sockaddr_in * address;
     address = malloc(sizeof(struct sockaddr_in));
@@ -85,167 +116,79 @@ struct sockaddr_in * binding(int socket, int port){
 
 
 
-
-
-//server/client sockets fd
-int server_fd, new_socket;
-
-//Signal handler for the signal SIGINT
+/**
+ * @brief Signal handler for SIGINT (Ctrl+C). Closes sockets and exits gracefully.
+ * @param signum The signal number (should be SIGINT).
+ */
 void sigintHandler(int signum) {
-    close(server_fd);
-    close(new_socket);
+    close(server_socket);
+    close(client_socket);
     exit(0);
 }
 
-//Signal handler for the signal SIGCHLD
+
+
+/**
+ * @brief Signal handler for SIGCHLD (child process terminated). Decrements the connected client count.
+ * @param signum The signal number (should be SIGCHLD).
+ */
 void sigchldHandler(int signum) {
-    printf("\nCIAOOOOOO, SI STO CHIUDENDO ORAAAAA");
+    printf("\n\nEXITING NOW WITH EXIT CODE:");
     
     int sigv;
     if(waitpid(-1, &sigv, WUNTRACED) < 0){
         perror("wait error");
         exit(errno);
     }else{
-        printf(" CON EXIT(%d)\n", sigv);
+        printf(" [%d]\n\n", sigv);
         fflush(stdout);
+        if(signum == SIGCHLD){
+            connectedClients--;
+        }
     }
 }
 
 
 
-
-//main function
-int main(int argc, char *argv[]) {
-
-    //setting up signal handlers
-    signal(SIGPIPE, SIG_IGN);
-    signal(SIGINT, sigintHandler);
-    signal(SIGCHLD, sigchldHandler);
-
-    //we allocate memory for all the tokens
-    sessionTokens = malloc(MAX_USERS_ * sizeof(TOKEN));
-    for(int i = 0; i < MAX_USERS_; i++){
-        sessionTokens[i] = malloc(TOKEN_LENGTH_ * sizeof(char) +1);
-    } 
-
-    //array for containing data during reading
-    char buffer[BUFFER_SIZE] = {0};
-
-    //address var
-    struct sockaddr_in *address;
-
-    
-    
-    //creating the socket on servers side
-    server_fd = socketSetUp(1);
-
-    //binding process
-    address = binding(server_fd, SERVER_PORT);
-
-    int addrlen = sizeof(*address);
-
-    // Listening
-    if (listen(server_fd, MAX_USERS_) < 0) {
-        perror("listen failed");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Server listening on PORT: %d\n", SERVER_PORT);
-
-    int pidpadre = getpid();
-
-    //waiting for clients requests
-    while(1){
-
-        pid_t childpid; /* variable to store child's process id */
-
-        // Accepting connections
-        if ((new_socket = accept(server_fd, (struct sockaddr *)address, (socklen_t*)&addrlen)) < 0) {
-            perror("accept failed");
-            fflush(stdout);
-            close(server_fd);
-            exit(EXIT_FAILURE);
-        }
-
-        int option = 1;
-        if (setsockopt(new_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) < 0) {
-            perror("Errore in setsockopt");
-            fflush(stdout);
-            close(server_fd);
-            exit(EXIT_FAILURE);
-        }
-
-        if ((childpid = fork()) == -1)
-        { // fork failed.
-            close(new_socket);
-            continue;
-        }
-        else if (childpid > 0)
-        { // parent process
-            printf("\n parent process: %d\n", childpid);
-            close(new_socket);
-        }
-        else if (childpid == 0)
-        { // child process
-            printf("\n child process: %d\n", childpid);
-            close(server_fd);
-            signal(SIGPIPE, SIG_DFL);
-            while(1){   
-                // reading data from client
-                int valread = read(new_socket, buffer, BUFFER_SIZE);
-                
-                // returns buffers data into a proper struct
-                Message * data = deconstruct_Message_String(buffer);
-                printf("richiesta ricevuta: %c\n", data->operation);
-                fflush(stdout);
-                
-                //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
-                if(data->operation == LISTING){
-                    char * contactsList = readContacts();
-                    int32_t nContacts_uint = htonl(contactsList[0]);
-                    write(new_socket, &nContacts_uint, sizeof(nContacts_uint));
-                    write(new_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53 + 1)); 
-                        
-
-                }else{ 
-                    if(data->operation != LOGIN){
-
-                        // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
-                        if(checkLoginSession(data->token) < 0){
-                            int outcome = TRYING_ILLEGAL_ACCESS;
-                            int32_t outcome_uint = htonl(outcome);
-                            write(new_socket, &outcome_uint, sizeof(outcome_uint));
-                        }else{
-                            int outcome = execute_operation(data);
-                            int32_t outcome_uint = htonl(outcome);
-                            write(new_socket, &outcome_uint, sizeof(outcome_uint));
-                        }
-                    }else{
-                        int outcome = execute_operation(data);
-                        char * buffer = malloc(33 * sizeof(char));
-                        buffer[0] = outcome;
-                        if(outcome == POSITIVE)
-                            strncpy((char *)&(buffer[1]), (const char *)sessionTokens[newSessionTokenIndex-1], strlen(sessionTokens[newSessionTokenIndex-1])); 
-                        write(new_socket, buffer, 33 * sizeof(char));
-                    }
-                }
-                /* close(new_socket);
-                exit(0); */
-            }
-        }
-        printf("server: got connection from %s\n", inet_ntoa(address->sin_addr));
-            
-
-    }
-
+void sigpipeHandler(int signum) {
+    printf("CLIENT DISCONNECTED\n\n");
+    close(client_socket);
+    logAnEvent(DISCONNECTION, (Message *) NULL, client_ip, getCurrentTimeStr());
 }
 
 
 
-/// @brief Functions that simply decides which operation to perform based on the "operation" field contained in data
-/// @param data variable of Message struct type that contains all data received from a client
-/// @return an integer containing a value representing the outcome of the operation
+/**
+ * @brief Rejects a client connection due to too many clients being connected.
+ * Sends an appropriate error message to the client.
+ * @param client_socket The client socket to reject.
+ */
+void rejectConnection(int client_socket){
+    int outcome = TOO_MANY_CLIENTS_CONNECTED;
+    int32_t outcome_uint = htonl(outcome);
+    write(client_socket, &outcome_uint, sizeof(outcome_uint));
+}
+
+
+
+/**
+ * @brief Accepts a client connection after verifying available space.
+ * @param client_socket The client socket to accept.
+ */
+void acceptConnection(int client_socket){
+    int outcome = CONNECTION_ACCEPTED;
+    int32_t outcome_uint = htonl(outcome);
+    write(client_socket, &outcome_uint, sizeof(outcome_uint));
+}
+
+
+
+/**
+ * @brief Executes the requested operation based on the 'data->operation' field.
+ *
+ * @param data  Message struct containing client request data.
+ * @return An integer status code indicating the outcome of the operation.
+ */
 int execute_operation(Message * data){
     if(data->operation == INSERT){
         return insertContact(data);
@@ -267,12 +210,17 @@ int execute_operation(Message * data){
     return POSITIVE;
 }
 
-/// @brief Locks a certain file in read mode from start index to end index, making processes wait for lock or not wait for lock
-/// @param stream file to lock
-/// @param start start index
-/// @param end end index
-/// @param wait F_SETLKW for waiting, F_SETLK for no waiting
-/// @return the outcome of the locking operation
+
+
+/**
+ * @brief Locks a file for reading.
+ *
+ * @param stream  File pointer.
+ * @param start  Starting offset for the lock.
+ * @param end    Ending offset for the lock. Use EOF for the end of the file.
+ * @param cmd    fcntl command (e.g., F_SETLKW, F_SETLK).
+ * @return A pointer to the flock structure used for locking.  The memory allocated for flock should be handled by the caller.
+ */
 struct flock * lockRD(FILE * stream, int start, int end, int cmd){
     if(end == EOF){
         //getting the end of file pointer value
@@ -293,22 +241,26 @@ struct flock * lockRD(FILE * stream, int start, int end, int cmd){
     // If not able to lock the file exit, else proceed
     if (fcntl(fd, cmd, fl) == -1) 
     {
-        perror("can't set lock\n");
+        perror("can't set lock\n\n");
         exit(1);
     }else{
-        printf("i'm through: %d\n" , getpid());
+        //printf("Process %d locked the file\n\n" , getpid());
     }
 
     return fl;
 }
 
 
-/// @brief Locks a certain file in write mode from start index to end index, making processes wait for lock or not wait for lock
-/// @param stream file to lock
-/// @param start start index
-/// @param end end index
-/// @param wait F_SETLKW for waiting, F_SETLK for no waiting
-/// @return the outcome of the locking operation
+
+/**
+ * @brief Locks a file for writing.
+ *
+ * @param stream  File pointer.
+ * @param start  Starting offset for the lock.
+ * @param end    Ending offset for the lock. Use EOF for the end of the file.
+ * @param cmd    fcntl command (e.g., F_SETLKW, F_SETLK).
+ * @return A pointer to the flock structure used for locking.
+ */
 struct flock * lockWR(FILE * stream, int start, int end, int cmd){
     if(end == EOF){
         //getting the end of file pointer value
@@ -333,7 +285,7 @@ struct flock * lockWR(FILE * stream, int start, int end, int cmd){
         fflush(stdout);
         exit(1);
     }else{
-        printf("i'm through: %d\n" , getpid());
+        //printf("Process %d locked the file exclusively\n" , getpid());
         fflush(stdout);
     }
 
@@ -341,17 +293,23 @@ struct flock * lockWR(FILE * stream, int start, int end, int cmd){
 }
 
 
-/// @brief Unlocks a locked file
-/// @param stream file to lock
-/// @return the outcome of the unlocking operation
+
+
+/**
+ * @brief Unlocks a previously locked file.
+ *
+ * @param stream File pointer.
+ * @param fl     Pointer to the flock structure used for locking.
+ * @return 0 if the file was locked, -1 if it was not locked.
+ */
 int unlock(FILE * stream, struct flock * fl){
     if(fl->l_type != F_UNLCK){
         fl->l_type = F_UNLCK;
-        printf("file unlocked\n");
+        //printf("file unlocked\n");
         fflush(stdout);
         return 0;
     }else{
-        printf("file was not locked\n");
+        //printf("file was not locked\n");
         fflush(stdout);
         return -1;
     }
@@ -359,12 +317,13 @@ int unlock(FILE * stream, struct flock * fl){
 
 
 
-
-
-
-/// @brief Function which reads all contacts contained on the address book file and puts them in an array of size 53*n+2, where n is the number of contacts and where the 2 additional positions contain outcome of the op. and number of contacts.
-/// @return returns the new array containing outcome and n.of contancts in the first 2 positions, and the contacts of the address book in the rest of the array.\n P.S. : the outcome value can be 3(ZERO_CONTACTS_SAVED) or 0(POSITIVE)
+/**
+ * @brief Reads all contacts from the address book file.
+ *
+ * @return A character array containing the contacts. The first two bytes contain status information{3: "ZERO_CONTACTS_SAVED" or 0: "POSITIVE"}.
+ */
 char * readContacts(){
+    logAnEvent(LISTING, (Message *) NULL, client_ip, getCurrentTimeStr());
     int nContacts;
     int outcome;
     char buffer[53];
@@ -377,12 +336,10 @@ char * readContacts(){
     struct flock * fl = lockRD(contacts, 0, EOF, F_SETLKW);
 
     nContacts = numberOfContacts(contacts);
-    printf("number of contacts: %d\n", nContacts);
 
     contactsList = malloc(2 + nContacts * 53 * sizeof(char));
 
     if(nContacts == 0){
-        printf("%d is unlocking file\n", getpid());
         unlock(contacts, fl);
         contactsList[1] = ZERO_CONTACTS_SAVED;
         return contactsList;
@@ -409,11 +366,18 @@ char * readContacts(){
 
 
 
-/// @brief function that takes a Message struct as input and inserts the contact contained into the address book file
-/// @param data variable of Message struct type that contains all data received from a client
-/// @return the outcome
+/**
+ * @brief Inserts a new contact into the address book.
+ *
+ * @param data  The contact data.
+ * @return The outcome of the operation.
+ */
 int insertContact(Message * data){
-    
+    printToken();
+    fflush(stdout);
+
+    logAnEvent(INSERT, data, client_ip, getCurrentTimeStr());
+
     // opening file in append mode
     FILE * contacts;
     contacts = fopen(CONTACTS_PATH, "a+");
@@ -450,10 +414,16 @@ int insertContact(Message * data){
 
 
 
-/// @brief function that takes a Message struct as input and edits a contact of the address book
-/// @param data variable of Message struct type that contains all data received from a client
-/// @return the outcome
+/**
+ * @brief Edits an existing contact in the address book.
+ *
+ * @param data  The old + new contact data.
+ * @return The outcome of the operation.
+ */
 int editContact(Message * data){
+    
+    logAnEvent(EDIT, data, client_ip, getCurrentTimeStr());
+
     FILE * contacts;
     char buffer[53];
     int outcome;
@@ -489,24 +459,36 @@ int editContact(Message * data){
 
 
 
-/// @brief function that takes a Message struct as input and deletes a contact of the address book
-/// @param data variable of Message struct type that contains all data received from a client
-/// @return the outcome
+/**
+ * @brief Deletes a contact from the address book.
+ *
+ * @param data  The contact data.
+ * @return The outcome of the operation.
+ */
 int deleteContact(Message * data){
-    //FILE * contacts;
-    //contacts = fopen(CONTACTS_PATH, "r+");
-    return rewriteAddressBook(data);;
+    logAnEvent(DELETE, data, client_ip, getCurrentTimeStr());
+    return rewriteAddressBook(data);
 }
 
 
 
-/// @brief function which cheks wheter the username and password data sent by the client are correspondent to a certain user account and in case creates and sends back to the client a uniquely identified session token
-/// @param data variable of Message struct type that contains all data received from a client
-/// @return the outcome
+/**
+ * @brief Verifies if a given token matches the current session token.
+ *
+ * @param token  The token to check.
+ * @return 1 if the token matches, -1 otherwise.
+ */
 int login(Message * data){
+
+    //we allocate memory for the token
+    sessionToken = malloc(TOKEN_LENGTH_ * sizeof(char));
+
     int loginOutcome;
     char buffer[100];
     FILE * users = fopen(USERS_PATH, "r+");
+
+    //locking file
+    struct flock * fl = lockRD(users, 0, EOF, F_SETLKW);
     
     //checks if the user is present in the users file
     if(search_And_Set_UserIndex(users, data) != -1){
@@ -534,68 +516,68 @@ int login(Message * data){
 
         if(strcmp(pswSHA256hex, convertedPsw) == 0){
             free(convertedPsw);
-            printf("POSITIVE LOGIN");
-            if(newSessionTokenIndex < (MAX_USERS_-1)){
-                
-                //insrting the new session token into the array after checking wheter we have a limit of max logged users
-                TOKEN str = malloc(32 * sizeof(char));
-                gen_token(sessionTokens[newSessionTokenIndex], TOKEN_LENGTH_);
-                newSessionTokenIndex++;
-                loginOutcome = POSITIVE;
 
-            }else{
-                free(convertedPsw);
-                printf("\nTOO MANY CLIENTS CONNECTED\n\n");
-                loginOutcome = TOO_MANY_CLIENTS_CONNECTED;
-            } 
-            
+            logAnEvent(SUCCESSFUL_LOGIN_ATTEMPT, data, client_ip, getCurrentTimeStr());
+            printf("\nPOSITIVE LOGIN\n\n");
+                   
+            //inserting the new session token into the array after checking wheter we have a limit of max logged users
+            TOKEN str = malloc(32 * sizeof(char));
+            gen_token(sessionToken, TOKEN_LENGTH_);
+            loginOutcome = POSITIVE;
+
         }else{
+            logAnEvent(UNSUCCESSFUL_LOGIN_ATTEMPT, data, client_ip, getCurrentTimeStr());
             printf("\nPASSWORD NOT CORRECT\n\n");
             loginOutcome = PASSWORD_NOT_CORRECT;
         } 
     }else{
+        logAnEvent(UNSUCCESSFUL_LOGIN_ATTEMPT, data, client_ip, getCurrentTimeStr());
         printf("\nUSER NOT FOUND\n\n");
         loginOutcome = USER_NOT_FOUND;
     }
 
+    unlock(users, fl);
+    fclose(users);
     
     return loginOutcome;  
 }
 
 
 
-/// @brief function that checks login session, serves only a security purpose
-/// @param token token we want to compare
-/// @return the outcome of the checking operation
+/**
+ * @brief Verifies if a given token matches the current session token.
+ *
+ * @param token  The token to check.
+ * @return 1 if the token matches, -1 otherwise.
+ */
 int checkLoginSession(TOKEN token){
-    for(int i = 0; i < newSessionTokenIndex; i++){
-        if(strcmp(token, sessionTokens[i]) == 0){
-            return 1;
-        }
-    }
+    printf("ecco il token: (length = %d)%s | (length = %d)%s\n", strlen(token), token, strlen(sessionToken), sessionToken);
+    printf("%d", strcmp(token, sessionToken));
+    if(strcmp(token, sessionToken) == 0)
+        return 1;
     return -1;
 }
 
 
 
-/// @brief function for logging out. takes the session token as input
-/// @param token 
-void logout(TOKEN token){
-    printf("SONO NEL LOGOUT");
-    for(int i = 0; i < newSessionTokenIndex; i++){
-        if(strcmp(token, sessionTokens[i]) == 0){
-            printf("\nTROVATO il token: %d che è uguale al token %d\n", sessionTokens[i], token);
-            for(int j = i; j < (newSessionTokenIndex-1); j++){
-                sessionTokens[j] = sessionTokens[j+1];
-            }
-        }
-    }
-    newSessionTokenIndex--;
+/**
+ * @brief Handles user logout.
+ *
+ * @param token The session token of the user logging out.
+ */
+void logout(Message * data){
+    logAnEvent(LOGOUT, data, client_ip, getCurrentTimeStr());
+    free(sessionToken);
 }
 
 
 
-//simple function that builds a Message struct variable using clients message array data
+/**
+ * @brief Parses a message string into a Message struct.
+ *
+ * @param msg The message string.
+ * @return A pointer to the allocated Message struct, or NULL on error.
+ */
 Message * deconstruct_Message_String(char * msg){
     Message * data  = malloc(sizeof (Message));
     data->operation = msg[0];
@@ -625,14 +607,30 @@ Message * deconstruct_Message_String(char * msg){
     strncpy(data->psw, mesg, 20);
     
     mesg = &msg[POS_TOKEN];
+    /*  */
+
+    char * token = malloc(32 * sizeof(char));
+    
     strncpy(data->token, mesg, 32);
+    data->token[TOKEN_LENGTH_] = '\0';
+    
+    printf("ecco il token: (length = %d)%s | (length = %d)%s\n", strlen(data->token), data->token, strlen(mesg), mesg);
+    fflush(stdout);
     
     return data;
 }
 
 
 
-//after passing an already opened file, this function searches for a user in the users file and returns the outcome of the fseek operation
+/**
+ * @brief Searches for a user and sets the file pointer.
+ *
+ * @param users File pointer to the users file.
+ * @param data User data to search for.
+ * @return fseek result, or -1 if not found.
+ * @pre Users file open in read mode.
+ * @post File pointer at user record, or undefined if not found.
+ */
 int search_And_Set_UserIndex(FILE * users, Message * data){
     char buffer[86];
     fseek(users, 0, SEEK_SET);
@@ -647,7 +645,15 @@ int search_And_Set_UserIndex(FILE * users, Message * data){
 
 
 
-//after passing an already opened file, this function searches for a contact in the address book file and returns the outcome of the fseek operation
+/**
+ * @brief Searches for a contact and sets the file pointer.
+ *
+ * @param contacts File pointer to the contacts file.
+ * @param data Contact data.
+ * @return fseek result, or -1 if not found.
+ * @pre Contacts file open in read mode.
+ * @post File pointer at contact record, or undefined if not found.
+ */
 int search_And_Set_ContactIndex(FILE * contacts, Message * data){
     char buffer[53];
     fseek(contacts, 0, SEEK_SET);
@@ -664,7 +670,14 @@ int search_And_Set_ContactIndex(FILE * contacts, Message * data){
 
 
 
-//after passing an already opened file, this function counts the number of Contacts in the address book file
+/**
+ * @brief Counts contacts in the address book file.
+ *
+ * @param contacts  File pointer to open file.
+ * @return Number of contacts.
+ * @pre Contacts file open in read mode.
+ * @post File pointer at end of file.
+ */
 int numberOfContacts(FILE * contacts){
     char buffer[53];
     int count = 0;
@@ -678,7 +691,13 @@ int numberOfContacts(FILE * contacts){
 
 
 
-//after passing an already opened file, this function changes the data of the address book, updating or removing a certain contact
+/**
+ * @brief  Updates or removes a contact in the address book file.
+ * 
+ * @param data Contact details (including new details for editing).
+ * @return Operation outcome (success, not found, or error).
+ * @pre Address book file must exist.
+ */
 int rewriteAddressBook(Message * data){
     int outcome;
     char buffer[53];
@@ -707,17 +726,23 @@ int rewriteAddressBook(Message * data){
                 phoneNumber = strtok(NULL, "\n");
                 
                 //if the contact is not the same we can write it down also in the new file
-                if(strcmp(name, data->name) != 0 && strcmp(lastName, data->lastName) != 0 && strcmp(phoneNumber, data->phoneNumber) != 0){
+                if(strcmp(name, data->name) != 0 || strcmp(lastName, data->lastName) != 0 || strcmp(phoneNumber, data->phoneNumber) != 0){
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
                     if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
-                        printf("error during writing phase occurred");
+                        printf("\nerror during writing phase occurred\n");
+                        fflush(stdout);
                         outcome = ERROR_OCCURED;
+                        
                     }else{
-                        printf("operation successfully completed");
+                        printf("\noperation successfully completed\n");
+                        fflush(stdout);
                         outcome = POSITIVE;
+                        
                     }
+    
                 }   
             } 
+
             //we delete the original file and rename the temporary one
             //but unlocking file contacts file first
             unlock(contacts, fl);
@@ -758,19 +783,23 @@ int rewriteAddressBook(Message * data){
                 if(strcmp(name, data->name) == 0 && strcmp(lastName, data->lastName) == 0 && strcmp(phoneNumber, data->phoneNumber) == 0){
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", data->new_name, data->new_lastName, data->new_phoneNumber);
                     if((int)(strlen(data->new_name)+strlen(data->new_lastName)+strlen(data->new_phoneNumber)+3) != nCharWritten || nCharWritten == -1){
-                        printf("error during writing phase occurred");
+                        printf("\nerror during writing phase occurred\n");
+                        fflush(stdout);
                         outcome = ERROR_OCCURED;
                     }else{
-                        printf("operation successfully completed");
+                        printf("\noperation successfully completed\n");
+                        fflush(stdout);
                         outcome = POSITIVE;
                     }
                 }else{
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
                     if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
-                        printf("error during writing phase occurred");
+                        printf("\nerror during writing phase occurred\n");
+                        fflush(stdout);
                         outcome = ERROR_OCCURED;
                     }else{
-                        printf("operation successfully completed");
+                        printf("\noperation successfully completed\n");
+                        fflush(stdout);
                         outcome = POSITIVE;
                     }
                 } 
@@ -795,7 +824,12 @@ int rewriteAddressBook(Message * data){
 
 
 
-//utility function for converting a given string to hex format
+/**
+ * @brief Converts hash to hexadecimal string.
+ * @param hash Hash value.
+ * @param output Output buffer (must be large enough).
+ * @param length Hash length.
+ */
 void to_hex(const unsigned char *hash, char *output, size_t length) {
     for (size_t i = 0; i < length; i++) {
         sprintf(output + (i * 2), "%02x", hash[i]);
@@ -805,7 +839,12 @@ void to_hex(const unsigned char *hash, char *output, size_t length) {
 
 
 
-//utility function for converting a given string to sha256 format. returns an unsigned char array of 32 bytes
+/**
+ * @brief Computes SHA256 hash of a string.
+ * @param str Input string.
+ * @param hash Output buffer (at least 32 bytes).
+ * @return Pointer to the hash.
+ */
 unsigned char * convertToSHA256(char * str, unsigned char * hash)
 {
     SHA256_CTX sha256;
@@ -816,7 +855,11 @@ unsigned char * convertToSHA256(char * str, unsigned char * hash)
   
 
 
-//utility function that only generates a random alpha-numeric token(random string) of a certain given "length"
+/**
+ * @brief Generates a random alphanumeric token.
+ * @param token Output buffer (must be large enough).
+ * @param length Token length.
+ */
 void gen_token(TOKEN token, size_t length) {
     char charset[] = "0123456789"
                      "abcdefghijklmnopqrstuvwxyz"
@@ -830,3 +873,280 @@ void gen_token(TOKEN token, size_t length) {
     }
     token[i] = '\0';
 } 
+
+
+
+/**
+ * @brief Gets the current time as a string.
+ * @return A dynamically allocated string containing the current time.  The caller is responsible for freeing the memory.
+ */
+char * getCurrentTimeStr(){
+    
+    time_t rawtime;
+	time ( &rawtime );
+  	struct tm * timeinfo = localtime ( &rawtime );
+
+	char * strTMP = asctime(timeinfo);
+    int size = (int)strcspn(strTMP, "\n");
+	
+    //copying the time string without \n
+    char * time_str = malloc((size+1) * sizeof(char));
+	strncpy(time_str, strTMP, size);
+
+	time_str[size] = '\0';
+
+    return time_str;
+}
+
+
+
+/**
+ * @brief Logs an event to the server's log file.
+ *
+ * @param eventCode  The code representing the event.
+ * @param data       A pointer to a Message struct containing data related to the event (may be NULL).
+ * @param address    The IP address of the client involved in the event.
+ * @param time       A string representing the timestamp of the event.
+ * @return An integer status code indicating the outcome.
+ */
+int logAnEvent(int eventCode, Message * data, char * address, char * time){
+    FILE * logfile = fopen(LOG_PATH, "a+");
+    struct flock * fl = lockWR(logfile, 0, EOF, F_SETLKW);
+
+    int outcome = POSITIVE;
+    switch(eventCode){
+        case SUCCESSFUL_CONNECTION_ATTEMPT:
+            outcome = fprintf(logfile, "[%s] Client %s connected successfully (process with PID: %d created)\n", time, address, getpid());
+            break;
+        case UNSUCCESSFUL_CONNECTION_ATTEMPT:
+            outcome = fprintf(logfile, "[%s] Client %s connected unsuccessfully(too many clients connected)\n", time, address);
+            break;
+        case DISCONNECTION:
+            outcome = fprintf(logfile, "[%s] Client %s disconnected(process with PID: %d terminated)\n", time, address, getpid());
+            break;
+        case LISTING:
+            outcome = fprintf(logfile, "[%s] Client %s requested LISTING operation (PID: %d)\n", time, address, pid);
+            break;
+        case INSERT:
+            outcome = fprintf(logfile, "[%s] Client %s requested INSERT of contact {%s %s %s}(PID: %d)\n", time, address, data->name, data->lastName, data->phoneNumber, getpid());
+            break;
+        case EDIT:
+            outcome = fprintf(logfile, "[%s] Client %s requested EDIT of contact {%s %s %s} to {%s %s %s} (PID: %d)\n", time, address,  data->name, data->lastName, data->phoneNumber, data->new_name, data->new_lastName, data->new_phoneNumber, getpid());
+            break;
+        case DELETE:
+            outcome = fprintf(logfile, "[%s] Client %s requested DELETE of contact {%s %s %s} (PID: %d)\n", time, address,  data->name, data->lastName, data->phoneNumber, getpid());
+            break;
+        case SUCCESSFUL_LOGIN_ATTEMPT:
+            outcome = fprintf(logfile, "[%s] Client %s LOGGED IN successfully as USER:{%s} (PID: %d)\n", time, address,  data->username, getpid());
+            break;
+        case UNSUCCESSFUL_LOGIN_ATTEMPT:
+            outcome = fprintf(logfile, "[%s] Client %s unsuccessful login as USER:{%s} (PID: %d)\n", time, address,  data->username, getpid());
+            break;
+        case LOGOUT:
+            outcome = fprintf(logfile, "[%s] Client %s logged out as USER:{%s} (PID: %d)\n", time, address,  data->username, getpid());
+            break;
+        default:
+            outcome = ERROR_OCCURED;
+            break;
+    }
+    unlock(logfile, fl);
+    fclose(logfile);
+
+    return outcome;
+}
+
+
+
+void printToken(){
+    printf("\nTOKENS:\n");
+    printf("%s\n", sessionToken);
+    printf("------------------------------:\n");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * @brief Main function of the server.  Handles client connections, forks child processes, and processes client requests.
+ *
+ * @param argc Argument count.
+ * @param argv Argument vector.
+ * @return 0 on successful termination, or a negative error code.
+ */
+int main(int argc, char *argv[]) {
+
+    //setting up signal handlers
+    signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, sigintHandler);
+    signal(SIGCHLD, sigchldHandler);
+
+    //array for containing data during reading
+    char buffer[BUFFER_SIZE] = {0};
+
+    //address var
+    struct sockaddr_in * client_address;
+
+    //creating the socket on servers side
+    server_socket = socketSetUp(1);
+
+    //binding process
+    client_address = binding(server_socket, SERVER_PORT);
+
+    int addrlen = sizeof(*client_address);
+
+    // Listening
+    if (listen(server_socket, MAX_CLIENTS_) < 0) {
+        perror("listen failed");
+        close(server_socket);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Server listening on PORT: %d\n", SERVER_PORT);
+
+    //waiting for clients requests
+    while(1){
+
+        pid_t childpid; /* variable to store child's process id */
+        char * acceptTime = malloc(30 * sizeof(char));
+
+        // Accepting connections
+        if ((client_socket = accept(server_socket, (struct sockaddr *)client_address, (socklen_t*)&addrlen)) < 0) {
+            perror("accept failed");
+            fflush(stdout);
+            close(server_socket);
+            exit(EXIT_FAILURE);
+        }else{
+            printf("%d ha accettato", getpid());
+            fflush(stdout);
+            if((connectedClients + 1) > MAX_CLIENTS_){
+                logAnEvent(UNSUCCESSFUL_CONNECTION_ATTEMPT, (Message *) NULL, client_ip, getCurrentTimeStr());
+                rejectConnection(client_socket);            
+                close(client_socket);
+                continue;
+            }else{
+                acceptTime = getCurrentTimeStr();
+                acceptConnection(client_socket);
+                connectedClients++;
+            }
+        }
+
+        // Conversione dell'indirizzo IP del client in stringa
+        if (inet_ntop(AF_INET, (struct in_addr*)&(client_address->sin_addr.s_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
+            perror("IP conversion error: ");
+            close(client_socket);
+            close(server_socket);
+            exit(EXIT_FAILURE);
+        }
+
+        int option = 1;
+        if (setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) < 0) {
+            perror("Errore in setsockopt");
+            fflush(stdout);
+            close(server_socket);
+            exit(EXIT_FAILURE);
+        }
+
+        if ((childpid = fork()) == -1)
+        { // fork failed.
+            close(client_socket);
+            continue;
+        }
+
+        else if (childpid > 0)
+        { // parent process
+            //saving the pid(used for logging)
+            pid = getpid();
+            printf("\n parent process: %d\n", childpid);
+            close(client_socket);
+        }
+
+        // child process
+        else if (childpid == 0)
+        { 
+            signal(SIGPIPE, sigpipeHandler);
+
+            //saving the pid(used for logging right after)
+            pid = getpid();
+            logAnEvent(SUCCESSFUL_CONNECTION_ATTEMPT, (Message *) NULL, client_ip, acceptTime);
+
+            printf("\n child process: %d\n", pid);
+
+            close(server_socket);
+            
+            while(1){   
+                int valread = -1;
+
+                //NOTE: generally the first read doesnt receive a -1 if client disconnects...
+                //so we have to put a check afterward so that the disconnection is registered in the log and the process exits
+                valread = read(client_socket, buffer, BUFFER_SIZE);
+                if(valread <= 0){
+                    printf("read from client failed(valread = %d)\n", valread);
+                    fflush(stdout);
+                    logAnEvent(DISCONNECTION, (Message *) NULL, client_ip, getCurrentTimeStr());
+                    close(client_socket);
+                    exit(-1);
+                }
+                
+                printf("\n\n(valread = %d)buffer:\n\n", valread);
+                fflush(stdout);
+                for(int i = 0; i < valread; i++){
+                    printf("%c\n", buffer[i]);
+                    fflush(stdout);
+                } 
+                
+                // returns buffers data into a proper struct
+                Message * data = deconstruct_Message_String(buffer);
+                printf("%d ha ricevuto ricevuta: %c\n", getpid(), data->operation);
+                fflush(stdout);
+
+                //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
+                if(data->operation == LISTING){
+                    char * contactsList = readContacts();
+                    int32_t nContacts_uint = htonl(contactsList[0]);
+                    write(client_socket, &nContacts_uint, sizeof(nContacts_uint));
+                    write(client_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53 + 1));
+                    free(contactsList);
+                    free(data);
+                }else{ 
+                    if(data->operation != LOGIN){
+
+                        // SECURITY CHECK: I check if the access to logged users-only operations is being made normally
+                        if(checkLoginSession(data->token) < 0 && data->operation != LOGOUT){
+                            int outcome = TRYING_ILLEGAL_ACCESS;
+                            int32_t outcome_uint = htonl(outcome);
+                            write(client_socket, &outcome_uint, sizeof(outcome_uint));
+                            free(data);
+                        }else{
+                            
+                            int outcome = execute_operation(data);
+                            int32_t outcome_uint = htonl(outcome);
+                            write(client_socket, &outcome_uint, sizeof(outcome_uint));
+                            free(data);
+                        }
+                    }else{
+                        int outcome = execute_operation(data);
+                        char * buff = malloc(33 * sizeof(char));
+                        buff[0] = outcome;
+                        if(outcome == POSITIVE)
+                            strncpy((char *)&(buff[1]), (const char *)sessionToken, strlen(sessionToken)); 
+                        write(client_socket, buff, 33 * sizeof(char));
+                        free(data);
+                        free(buff);
+                    }
+                }
+            }
+        }
+        printf("server: got connection from %s\n", inet_ntoa(client_address->sin_addr));     
+    }
+
+}

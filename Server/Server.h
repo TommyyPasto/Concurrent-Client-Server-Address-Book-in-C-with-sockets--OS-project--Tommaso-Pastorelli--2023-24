@@ -10,17 +10,21 @@
 #include <sys/wait.h>
 #include "errno.h"
 #include <openssl/sha.h>
+#include "/home/tommy/ProgettoSO/Utils/ServerUtils.h"
 
 
-#define MAX_USERS_ 10
+#define MAX_CLIENTS_ 2
 
-#define SERVER_PORT 13000
+#define SERVER_PORT 13001
 #define SERVER_ADDRESS "127.0.0.1"
 #define BUFFER_SIZE 173
 
 
-char * CONTACTS_PATH = "/home/tommy/ProgettoSO/Server/contatti.txt";
-char * USERS_PATH = "/home/tommy/ProgettoSO/Server/utenti.txt";
+char * CONTACTS_PATH = "/home/tommy/ProgettoSO/Server/files/contatti.txt";
+char * USERS_PATH = "/home/tommy/ProgettoSO/Server/files/utenti.txt";
+char * LOG_PATH = "/home/tommy/ProgettoSO/Server/files/log.txt";
+
+
 
 
 //OUTCOME CODES
@@ -33,7 +37,8 @@ char * USERS_PATH = "/home/tommy/ProgettoSO/Server/utenti.txt";
 #define TRYING_ILLEGAL_ACCESS 4
 #define PASSWORD_NOT_CORRECT 5
 #define USER_NOT_FOUND 6
-#define TOO_MANY_CLIENTS_CONNECTED 7
+#define CONNECTION_ACCEPTED 7
+#define TOO_MANY_CLIENTS_CONNECTED 8
 
 
 
@@ -45,6 +50,18 @@ char * USERS_PATH = "/home/tommy/ProgettoSO/Server/utenti.txt";
 #define DELETE '4'
 #define LOGIN '+'
 #define LOGOUT '-'
+
+
+
+
+//EXTRA NUMS
+
+#define SUCCESSFUL_CONNECTION_ATTEMPT 1
+#define UNSUCCESSFUL_CONNECTION_ATTEMPT 2
+#define DISCONNECTION -1
+
+#define SUCCESSFUL_LOGIN_ATTEMPT 3
+#define UNSUCCESSFUL_LOGIN_ATTEMPT 4
 
 
 
@@ -120,6 +137,9 @@ int checkLoginSession(TOKEN token);
 void gen_token(TOKEN token, size_t length);
 unsigned char * convertToSHA256(char * str, unsigned char * output);
 void to_hex(const unsigned char *hash, char *output, size_t length);
+
+char * getCurrentTimeStr();
+int logAnEvent(int eventCode, Message * data, char * address, char * time);
 
 
 

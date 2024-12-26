@@ -28,15 +28,13 @@
 #include "Client.h"
 
 
-
-void clear_last_n_lines(int n) {
-    for (int i = 0; i < n; i++) {
-        // Muove il cursore di una riga verso l'alto e cancella la riga
-        printf("\033[A");
-    }
-    printf("\033[J");
-}
- 
+//here we are defining some global values which come in handful since are to be accessed by many functions
+TOKEN sessionTOKEN;
+int client_sock;
+int logged = 0; //used only for UI representation, the real login checking happens server's side
+struct sockaddr_in serv_addr;
+int first = 1;
+int fileNumCounter = 1;
 
 
 struct sockaddr_in * buildSocketaddress(char * serverAddress, int serverPort){
@@ -71,12 +69,22 @@ int connect_To_Server(char * serverAddress, int serverPort){
 }
 
 
-//THis function tries to reconnect to server through the socket passed as parameter
+//This function tries to reconnect to server through the socket passed as parameter
 int tryConnection(int sock, struct sockaddr_in * serv_addr){
-    
+    int outcome;
     //Connection to server
     while(1){
-        if(connect(sock, serv_addr, sizeof(*serv_addr)) < 0) {
+        if(connect(sock, serv_addr, sizeof(*serv_addr)) < 0 || (outcome = checkTooManyClientsConnected(sock, serv_addr)) != CONNECTION_ACCEPTED) {
+            printOutcome(outcome);
+
+            //recreating sock
+            close(sock);
+            //Socket's recreation
+            if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+                printf(SOCKET_CREATION_ERROR "\n");
+                exit(-1);
+            }
+
             char retry [10];
             printf(RED"-------> "CONNECTION_ERROR":  " RESET);
             scanf("%s",retry);
@@ -90,20 +98,32 @@ int tryConnection(int sock, struct sockaddr_in * serv_addr){
                 exit(-1);
             }
         }else{
+            first = 1;
+            printOutcome(outcome);
             return sock;
         }
     }
 }
     
 
+//Checks what is the outcome of a connection, specifically if there are too many clients connected on server
+int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_addr) {
+    
+    //receiving outcome
+    int32_t outcome_uint;
+    int valread = read(client_socket, &outcome_uint, sizeof(outcome_uint));
 
+    if (valread <= 0) {
+        
+        // Handle potential read error or disconnection
+        printf(RED SERVER_DISCONNECTED_ERROR RESET);
+        close(client_socket);
+        exit(-1); 
+        return;
+    }
 
-//here we are defining some global values which come in handful since are to be accessed by many functions
-TOKEN sessionTOKEN;
-int client_sock;
-int logged = 0; //used only for UI representation, the real login checking happens server's side
-struct sockaddr_in serv_addr;
-
+    return ntohl(outcome_uint);
+}
 
 
 //handler for signal SIGINT(CTRL+C)
@@ -114,20 +134,24 @@ void sigintHandler(int signum) {
     close(client_sock);
     exit(0);
 }
-//risolvere il pronlema del perchè la write da problemi se il server si chiude con ctrl c !!
-
 
 
 //Application Main
 int main(int argc, char *argv[]) {
+    
+    char * address = (strcmp(argv[1], "localhost") == 0) ? "127.0.0.1" : argv[1];
+    int port = atoi(argv[2]);
+
+    system("clear || cls");
 
     signal(SIGINT, sigintHandler);
+    //signal(SIGPIPE, sigpipeHandler);
 
     //defining a space in memory for the token to be used for login and operations
     sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
 
     //connecting to server with users data passed on terminal line
-    client_sock = connect_To_Server(SERVER_ADDRESS, SERVER_PORT);
+    client_sock = connect_To_Server(address, port);
 
     //Defining a Message variable to contain user inserted data
     Message * data;
@@ -136,17 +160,11 @@ int main(int argc, char *argv[]) {
     //Defining a fixed size char array to fill it with the "data" values in known and fixed indexes
     char message [BUFFER_SIZE];
 
-    struct sockaddr_in * serv_addr = buildSocketaddress(SERVER_ADDRESS, SERVER_PORT);
+    struct sockaddr_in * serv_addr = buildSocketaddress(address, port);
 
     //While the socket is still working the program keeps running
     int val = 0;
     while(1){
-        if(val < 0){
-            printf(RED SERVER_DISCONNECTED_ERROR RESET);
-
-            //using the serv_addr variable defined above here
-            tryConnection(client_sock, serv_addr);
-        } 
 
         //using the choose operation function to build the data object values
         data = choose_operation();
@@ -158,8 +176,7 @@ int main(int argc, char *argv[]) {
             
             //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
             val = write(client_sock, message, BUFFER_SIZE);
-            if(val > -1){
-                printf("Messaggio inviato al server\n");
+            if(val > 0){
 
                 /*first we receive from the server the number of contacts we will be receiving
                 so that we can prepare an adequate size array to contain all of those*/
@@ -167,26 +184,59 @@ int main(int argc, char *argv[]) {
 
                 //still checking eventual reading/writing problems...
                 val = read(client_sock, &numContacts_t, sizeof(numContacts_t));
-                
-                if(val > -1){
+                if(val > 0){
 
                     int numContacts = ntohl(numContacts_t);
-                    printf("num Contatti: %d\n", numContacts);
                     int size = sizeof(char) * numContacts * 53 + 1;
                    
                     char buffer[size];
-                    val = read(client_sock, buffer, size);
-                     printf("size: %d\n", size);
 
-                    //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
-                    printOutcome(buffer[0]); 
-                    if(numContacts > 0){
-                        listContacts(&buffer[1], numContacts);
-                        sleep(2);
+                    val = read(client_sock, buffer, size);
+                    if(val > 0){
+
+                        //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
+                        printOutcome(buffer[0]); 
+                        if(numContacts > 0){
+                            system("clear || cls");
+                            //printing menu on terminal
+                            printMenu(logged);
+                            listContacts(&buffer[1], numContacts);
+                            
+                            //asking if the user wants to save the results in a file
+                            char c;
+                            printf("Do you want to save these results in a file?[Y/n] ");
+                            scanf("%s", &c);
+                            
+                            clear_last_n_lines(1);
+                            if(c == 'Y')
+                            {
+
+                                char * newResultsFilePath = malloc(100 * sizeof(char));
+                                sprintf(newResultsFilePath, "%s%d.txt", RESULTS_PATH, fileNumCounter);
+                                if(saveRecordsInAFile(newResultsFilePath, &buffer[1], numContacts, 53) == POSITIVE){
+                                    printf(GRN "                  RESULTS SAVED IN FILE" RESET" '%s%d.txt'\n\n" , RESULTS_PATH, fileNumCounter);
+                                }
+
+                                fileNumCounter++;
+                            }
+                        }
+                    }else{
+                        printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                        tryConnection(client_sock, serv_addr);
+                        continue;
                     }
+
+                }else{
+                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                    tryConnection(client_sock, serv_addr);
+                    continue;
                 }
             }
-
+            else{
+                printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                tryConnection(client_sock, serv_addr);
+                continue;
+            }
         }else{
 
             //creating message 
@@ -194,8 +244,10 @@ int main(int argc, char *argv[]) {
 
             //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
             val = write(client_sock, message, BUFFER_SIZE);
-            if(val > -1){
-                printf("Data were successfully sent to the server\n"); 
+            if(val <= 0){
+                printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                tryConnection(client_sock, serv_addr);
+                continue;
             }
             
             //checking if the op. is LOGIN or not
@@ -204,31 +256,54 @@ int main(int argc, char *argv[]) {
                 //defining a 33 chars array to contain 1 byte of outcome and 32 bytes for the eventual token
                 char outcome[33];
                 val = read(client_sock, outcome, sizeof(outcome));
-                
-                printOutcome(outcome);  
-                
-                if(outcome[0] == POSITIVE && val > -1){
+                if(val <= 0){
+                    system("clear || cls");
+                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                    tryConnection(client_sock, serv_addr);
+                    continue;
+                }
+                else if(outcome[0] == POSITIVE && val > 0){
                     
+                    system("clear || cls");
+                    //printing menu on terminal
+                    if(outcome[0] == POSITIVE)
+                        logged = 1;
+                    else
+                        logged = 0;
+                    
+                    printMenu(logged);
+                    
+                    printOutcome(outcome[0]);  
+
                     //if the operation was completed successfully we write the login token for the current session into the sessionTOKEN variable
                     strcpy(sessionTOKEN, &outcome[1]); 
 
                     //and we modify the UI value for logged(or not) user
                     logged = 1;
-                    printf("%s\n", sessionTOKEN);
+                    printf("token: %s\n\n", sessionTOKEN, strlen(sessionTOKEN));
                 }
             }else{
                 //doing the same thing for other operations
                 int32_t esito_t;
                 val = read(client_sock, &esito_t, sizeof(esito_t));
-                int esito = ntohl(esito_t);
-                
-                printOutcome(esito);    
+                if(val <= 0){
+                    system("clear || cls");
+                    printf(RED SERVER_DISCONNECTED_ERROR RESET);
+                    tryConnection(client_sock, serv_addr);
+                    continue;
+                }else{
+                    int esito = ntohl(esito_t);
+                    system("clear || cls");
+                    //printing menu on terminal
+                    printMenu(logged);
+                    if(data->operation != LOGOUT)          
+                        printOutcome(esito); 
+                }   
             }
             
         }
 
     }
-    exit(0);
 }
 
 
@@ -236,31 +311,34 @@ int main(int argc, char *argv[]) {
 void printOutcome(int outcome){
     switch (outcome){
         case POSITIVE:
-            printf(GRN"          "POSITIVE_STR RESET"\n");
+            printf(GRN"\n\n            "POSITIVE_STR RESET"\n\n\n");
             break;
         case ERROR_OCCURED:
-            printf(RED"          "ERROR_OCCURED_STR RESET"\n");
+            printf(RED"\n\n            "ERROR_OCCURED_STR RESET"\n\n\n");
             break;
         case ALR_EXISTING_CONTACT:
-            printf(RED "          "ALR_EXISTING_CONTACT_STR RESET"\n");
+            printf(RED "\n\n           "ALR_EXISTING_CONTACT_STR RESET"\n\n\n");
             break;
         case CONTACT_NOT_FOUND:
-            printf(RED"          "CONTACT_NOT_FOUND_STR RESET"\n");
+            printf(RED"\n\n            "CONTACT_NOT_FOUND_STR RESET"\n\n\n");
             break;
         case ZERO_CONTACTS_SAVED:
-            printf(RED"          "ZERO_CONTACTS_SAVED_STR RESET"\n");
+            printf(RED"\n\n            "ZERO_CONTACTS_SAVED_STR RESET"\n\n\n");
             break;
         case TRYING_ILLEGAL_ACCESS:
-            printf(RED"          "TRYING_ILLEGAL_ACCESS_STR RESET"\n");
+            printf(RED"\n\n            "TRYING_ILLEGAL_ACCESS_STR RESET"\n\n\n");
             break;
         case PASSWORD_NOT_CORRECT:
-            printf(RED"          "PASSWORD_NOT_CORRECT_STR RESET"\n");
+            printf(RED"\n\n            "PASSWORD_NOT_CORRECT_STR RESET"\n\n\n");
             break;
         case USER_NOT_FOUND:
-            printf(RED"          "USER_NOT_FOUND_STR RESET"\n");
+            printf(RED"\n\n            "USER_NOT_FOUND_STR RESET"\n\n\n");
+            break;
+        case CONNECTION_ACCEPTED:
+            printf(GRN"\n\n            "CONNECTION_ACCEPTED_STR RESET"\n\n\n");
             break;
         case TOO_MANY_CLIENTS_CONNECTED:
-            printf(RED"          "TOO_MANY_CLIENTS_CONNECTED_STR RESET"\n");
+            printf(RED"\n\n            "TOO_MANY_CLIENTS_CONNECTED_STR RESET"\n\n\n");
             break;
         
     }
@@ -270,12 +348,11 @@ void printOutcome(int outcome){
 //simple function to print the user menu on the terminal
 void printMenu(int logged){
     if(logged == 1){
-        //system("clear || cls"); // Pulisce lo schermo (cross-platform)
     
         printf("*****************************************************\n");
-        printf("*                                               *\n");
-        printf("*"BLU"            WELCOME TO THE ADDRESS BOOK" RESET "                *\n" );
-        printf("*                                               *\n");
+        printf("*                                                   *\n");
+        printf("*"BLU"            WELCOME TO THE ADDRESS BOOK" RESET "            *\n" );
+        printf("*                                                   *\n");
         printf("*****************************************************\n");
         printf("\n");
         printf(GRN"  Choose an operation:"RESET"\n");
@@ -289,12 +366,11 @@ void printMenu(int logged){
         printf("  ---------------------------------------------\n");
         printf("\n");
     }else{
-        //system("clear || cls"); // Pulisce lo schermo (cross-platform)
     
         printf("*****************************************************\n");
-        printf("*                                               *\n");
-        printf("*"BLU"            WELCOME TO THE ADDRESS BOOK" RESET "                *\n" );
-        printf("*                                               *\n");
+        printf("*                                                   *\n");
+        printf("*"BLU"            WELCOME TO THE ADDRESS BOOK" RESET "            *\n" );
+        printf("*                                                   *\n");
         printf("*****************************************************\n");
         printf("\n");
         printf(GRN"  Choose an operation:"RESET"\n");
@@ -309,9 +385,13 @@ void printMenu(int logged){
 
 //Function which prints the users menu and returns the built Message variable
 Message * choose_operation(){
+    if(first == 1){
+        printMenu(logged);
+        first = 0;
+    }
 
     //variables used for range and data checks for teminal menu printing, so basically only for users interface
-    int choiceInCorrectRange;
+    int choiceInCorrectRange = 1;
     int dataInsertedCorrectly = 1;
 
     //variable which will contain the number of operation choosen by the user
@@ -319,10 +399,7 @@ Message * choose_operation(){
     
     /*using a while loop to print out menu and eventual errors of sort
     until the user has chosen a certain operation and submitted correct data*/
-    do{
-        
-        //printing menu on terminal
-        printMenu(logged);
+    do{ 
 
         printf(CYN"  Choose the operation: " RESET);
         scanf("%s", &choice);
@@ -348,46 +425,77 @@ Message * choose_operation(){
                 case INSERT: 
                 case DELETE:
                 case EDIT: 
+                    
                     data->operation = choice;
+
+                    char * name, * lastName, * phoneNumber;
+                    name = malloc(20 * sizeof(char));
+                    lastName = malloc(20 * sizeof(char));
+                    phoneNumber = malloc(10 * sizeof(char));
 
                     //checking name
                     printf(BLU"• Name: "RESET);
-                    scanf("%s", data->name);
-                    if(checkInsertedData(data->name, "name") < 0)
+                    scanf("%s", name);
+                    if(checkInsertedData(name, "name") == 0){
+                        strcpy(data->name, name);
+                    }else{
+                        dataInsertedCorrectly = 0;
                         break;
+                    }
                     
                     //checking last name
                     printf(BLU"• Last name: "RESET);
-                    scanf("%s", data->lastName);
-                    if(checkInsertedData(data->lastName, "last name") < 0)
+                    scanf("%s", lastName);
+                    if(checkInsertedData(lastName, "last name") == 0){
+                        strcpy(data->lastName, lastName);
+                    }else{
+                        dataInsertedCorrectly = 0;
                         break;
-
+                    }
+                        
                     //checking phone number
                     printf(BLU"• Phone number: "RESET);
-                    scanf("%s", data->phoneNumber);
-                    if(checkInsertedData(data->phoneNumber, "phone number") < 0)
+                    scanf("%s", phoneNumber);
+                    if(checkInsertedData(phoneNumber, "phone number") == 0){
+                        strcpy(data->phoneNumber, phoneNumber);
+                    }else{
+                        dataInsertedCorrectly = 0;
                         break;
+                    }
+                        
 
                     //we also have to consider new values in case of editing of contacts
                     if(choice == EDIT){
                         
-                        //checking new name
-                        printf(GRN"• New name: "RESET);
-                        scanf("%s", data->new_name);
-                        if(checkInsertedData(data->new_name, "name") < 0)
+                        //checking name
+                        printf(BLU"• Name: "RESET);
+                        scanf("%s", name);
+                        if(checkInsertedData(name, "name") == 0){
+                            strcpy(data->new_name, name);
+                        }else{
+                            dataInsertedCorrectly = 0;
                             break;
+                        }
 
-                        //checking new last name
-                        printf(GRN"• Nuovo lastName: "RESET);
-                        scanf("%s", data->new_lastName);
-                        if(checkInsertedData(data->lastName, "last name") < 0)
-                        break;
+                        //checking last name
+                        printf(BLU"• Last name: "RESET);
+                        scanf("%s", lastName);
+                        if(checkInsertedData(lastName, "last name") == 0){
+                            strcpy(data->new_lastName, lastName);
+                        }else{
+                            dataInsertedCorrectly = 0;
+                            break;
+                        }
 
-                        //checking new phone number
-                        printf(GRN"• Nuovo n. di telefono: "RESET);
-                        scanf("%s", data->new_phoneNumber);
-                        if(checkInsertedData(data->phoneNumber, "phone number") < 0)
-                        break;
+                        //checking phone number
+                        printf(BLU"• Phone number: "RESET);
+                        scanf("%s", phoneNumber);
+                        if(checkInsertedData(phoneNumber, "phone number") == 0){
+                            strcpy(data->new_phoneNumber, phoneNumber);
+                        }else{
+                            dataInsertedCorrectly = 0;
+                            break;
+                        }
                     }
                     return data;
                 
@@ -396,7 +504,10 @@ Message * choose_operation(){
                     data->operation = choice;
 
                     logged = 0;
-                    //sessionTOKEN = "\0";
+
+                    free(sessionTOKEN);
+                    sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
+                
                     //CHIEDI AL SERVER DI CHIUDERE IL FILE SOCKET CORRISPONDENTE E CHIUDI IL TUO LATO CLIENT
                     return data;
                     
@@ -405,19 +516,30 @@ Message * choose_operation(){
                     return data;
                     
                 default: 
+
+                    system("clear || cls");
+                    printMenu(logged);
+
+                    printf(RED "                       /\\\n");
+                    printf("                      /__\\\n");
+                    printf("                       ||\n");
+                    printf("                       ||\n");
+                    printf("   ******************************************** \n");
+                    printf("   ** PLEASE CHOOSE ONE OF THE ABOVE VALUES! ** \n");
+                    printf("   ******************************************** \n\n");
+
                     choiceInCorrectRange = 0;
-                    printf("\033c");
-                    printf(RED "\n*************************************************************** \n");
-                    printf("**     PLEASE CHOOSE ONE OF THE ABOVE VALUES! ** \n");
-                    printf("*************************************************************** \n");
-                    printf("\n");
-                    for(int i = 0; i < 3; i++)
-                        printf("                       ||\n");
-                    printf("                       \\/\n\n" RESET);
+
+                    sleep(1);
+
                     break;
             }
         }else{
             //same as above....
+            //initializing the interface check variables
+            choiceInCorrectRange = 1;
+            dataInsertedCorrectly = 1;
+
             Message * data;
             data = malloc(sizeof(Message));
             switch(choice){ 
@@ -432,24 +554,38 @@ Message * choose_operation(){
                     //checking username
                     printf(MAG"• Username: "RESET);
                     scanf("%s", data->username);
-                    if(checkInsertedData(data->username, "username") < 0)
+                    if(checkInsertedData(data->username, "username") == 0){
+                        strcpy(data->username, data->username);
+                    }else{
+                        dataInsertedCorrectly = 0;
                         break;
+                    }
 
                     //checking password
                     printf(MAG"• Password: "RESET);
                     scanf("%s", data->psw);
-                    if(checkInsertedData(data->psw, "password") < 0)
+                    if(checkInsertedData(data->psw, "password") == 0){
+                        strcpy(data->psw, data->psw);
+                    }else{
+                        dataInsertedCorrectly = 0;
                         break;
+                    }
 
                     return data;
 
             //otherwise i ask to login first     
             default:
+                system("clear || cls");
+                printMenu(logged);
+                
                 printf(RED"                  |\n"RESET);
                 printf(RED"                  |   (!!!)\n"RESET);
                 printf(RED"                  V\n"RESET);
-                printf(RED"\n[!] YOU HAVE TO LOGIN FIRST!\n\n"RESET);
-                sleep(2);
+                printf(RED"\n    [!] YOU HAVE TO LOGIN FIRST!\n\n"RESET);
+                sleep(1);
+
+                choiceInCorrectRange = 0;
+                break;
             }
         }
         
@@ -489,7 +625,7 @@ void create_Message_String(char message[], Message * data){
 //lists contacts in the array contactList
 void listContacts(char * contactList, int numContacts){
     int i = 1;
-    printf(BLU"\n\n[LISTA CONTATTI]\n"RESET);
+    printf(BLU"\n[LISTA CONTATTI]\n"RESET);
     do{
         char * list;
         list = &contactList[(i-1)*53];
@@ -506,32 +642,6 @@ void listContacts(char * contactList, int numContacts){
 }
 
 
-//checks the presence of chars different from alpha-numeric ones in the string(0 if ok, -1 if not)
-int checkAlphaNumeric(char * string){
-    int length = strlen(string);
-    for(int i = 0; i < length; i++){
-        char ch = string[i];
-        if(ch < 48 || (ch > 57 && ch < 65) || (ch > 90 && ch < 97) || ch > 122){
-            return -1;
-        }
-    }
-    return 0;
-}
-
-
-//check if the string is a number(0 if ok, -1 if not)
-int checkNumber(char * string){
-    int length = strlen(string);
-    for(int i = 0; i < length; i++){
-        char ch = string[i];
-        if(ch < 48 || ch > 57){
-            return -1;
-        }
-    }
-    return 0;
-}
-
-
 /*checks inserted data element, specify which one is to be checked on the second parameter("name", "last name", "phone number", "username" or "password")
 ; returns 0 if check is ok, -1 if not ok, and -2 if type of data is not correct*/
 int checkInsertedData(char * dataValue, char * typeOfData){
@@ -539,14 +649,20 @@ int checkInsertedData(char * dataValue, char * typeOfData){
     //case 1 --> it is name or last name
     if(strcmp(typeOfData, "name") == 0 || strcmp(typeOfData, "last name") == 0){
         if(strlen(dataValue) > 20){
-            printf(RED "*ERROR: name must be max 20 chars*\n" RESET);
+            system("clear || cls");
+            printMenu(logged);
+            printf(RED "        *ERROR: name must be max 20 chars*\n" RESET);
             if(checkAlphaNumeric(dataValue) == -1){
-                printf(RED "*ERROR: No special chars allowed*\n" RESET);
+                printf(RED "        *ERROR: No special chars allowed*\n" RESET);
             }
+            printf("\n");
             return -1;
         }
         if(checkAlphaNumeric(dataValue) == -1){
-            printf(RED "*ERROR: No special chars allowed*\n" RESET);
+            system("clear || cls");
+            printMenu(logged);
+            printf(RED "        *ERROR: No special chars allowed*\n" RESET);
+            printf("\n");
             return -1;
         }
         return 0;
@@ -555,14 +671,20 @@ int checkInsertedData(char * dataValue, char * typeOfData){
     //case 2 --> it is phone number
     else if (strcmp(typeOfData, "phone number") == 0){
         if(strlen(dataValue) > 10){
-            printf(RED "*ERROR: phone number must be max 10 chars*\n" RESET);
+            system("clear || cls");
+            printMenu(logged);
+            printf(RED "        *ERROR: phone number must be max 10 chars*\n" RESET);
             if(checkNumber(dataValue) == -1){
-                printf(RED "*ERROR: only insert numbers!*\n" RESET);
+                printf(RED "        *ERROR: only insert numbers!*\n" RESET);
             }
+            printf("\n");
             return -1;
         }
         if(checkNumber(dataValue) == -1){
-            printf(RED "*ERROR: only insert numbers!*\n" RESET);
+            system("clear || cls");
+            printMenu(logged);
+            printf(RED "        *ERROR: only insert numbers!*\n" RESET);
+            printf("\n");
             return -1;
         }
         return 0;
@@ -571,16 +693,22 @@ int checkInsertedData(char * dataValue, char * typeOfData){
     //case 3 --> it is username or password
     else if (strcmp(typeOfData, "username") == 0 || strcmp(typeOfData, "password") == 0){
         if(strlen(dataValue) > 20){
-            printf(RED "*ERROR: username must be max 20 chars*\n" RESET);
+            system("clear || cls");
+            printMenu(logged);
+            printf(RED "        *ERROR: username must be max 20 chars*\n" RESET);
+            printf("\n");
             return -1;
         }
         if(strchr(dataValue, ' ')){
-            printf(RED "*ERROR: no commas!*\n" RESET);
+            system("clear || cls");
+            printMenu(logged);
+            printf(RED "        *ERROR: no commas!*\n" RESET);
+            printf("\n");
             return -1;
         }
         return 0;
     }
 
-    return -2;
-     
+    return -2;    
 }
+

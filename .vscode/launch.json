@@ -1,0 +1,75 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "makefile debug",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${fileDirname}/bin/${fileBasenameNoExtension}.out",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${fileDirname}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "setupCommands": [
+            {
+                "description": "Disabilita l'intercettazione dei segnali",
+                "text": "handle SIGINT noignore",
+                "ignoreFailures": true
+            },
+            {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+            },
+            {
+                "description": "Set Disassembly Flavor to Intel",
+                "text": "-gdb-set disassembly-flavor intel",
+                "ignoreFailures": true
+            }    
+        ],
+        "preLaunchTask": "makefile build"
+      },
+      {
+          "name": "Debug Client",
+          "type": "cppdbg",
+          "request": "launch",
+          "program": "${workspaceFolder}/Client/Client.out",
+          "args": [],
+          "stopAtEntry": false,
+          "cwd": "${workspaceFolder}/Client",
+          "environment": [],
+          "externalConsole": false,
+          "MIMode": "gdb",
+          "setupCommands": [
+            {
+              "description": "Abilita la stampa dei valori",
+              "text": "-enable-pretty-printing",
+              "ignoreFailures": true
+            }
+          ],
+          "preLaunchTask": "build-client"
+      },
+      {
+          "name": "Debug Server",
+          "type": "cppdbg",
+          "request": "launch",
+          "program": "${workspaceFolder}/Server/Server.out",
+          "args": [],
+          "stopAtEntry": false,
+          "cwd": "${workspaceFolder}/Server",
+          "environment": [],
+          "externalConsole": false,
+          "MIMode": "gdb",
+          "setupCommands": [
+            {
+              "description": "Abilita la stampa dei valori",
+              "text": "-enable-pretty-printing",
+              "ignoreFailures": true
+            }
+          ],
+          "preLaunchTask": "build-server"
+      }
+    ]
+}
