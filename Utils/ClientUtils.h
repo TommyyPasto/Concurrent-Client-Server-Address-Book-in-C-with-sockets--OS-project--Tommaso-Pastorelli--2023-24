@@ -82,5 +82,4 @@ int checkFileOpened(char * pathname);
 int saveRecordsInAFile(char * filepath, char * msg, int nOfRecords, int nOfFields, int recordsLength,  const char *__restrict__ delim, const char *__restrict__  endOfRecDelim);
 
 
-
 #endif

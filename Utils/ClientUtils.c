@@ -1,5 +1,6 @@
 #include "ClientUtils.h"
 
+
 int checkFileOpened(char * pathname){
     int fd = open(pathname, O_WRONLY | O_EXCL);
     return fd;

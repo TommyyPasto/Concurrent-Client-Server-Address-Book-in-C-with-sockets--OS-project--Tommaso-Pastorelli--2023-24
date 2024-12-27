@@ -16,15 +16,15 @@
 #include <openssl/sha.h>
 
 
-#define RED   "\033[1;31m"  /**< Macro for red terminal output. */
-#define GRN   "\033[1;32m"  /**< Macro for green terminal output. */
-#define YEL   "\033[1;33m"  /**< Macro for yellow terminal output. */
-#define BLU   "\033[1;34m"  /**< Macro for blue terminal output. */
+#define RED   "\033[1;31m"  /**< Macro for red terminal output.     */
+#define GRN   "\033[1;32m"  /**< Macro for green terminal output.   */
+#define YEL   "\033[1;33m"  /**< Macro for yellow terminal output.  */
+#define BLU   "\033[1;34m"  /**< Macro for blue terminal output.    */
 #define MAG   "\033[1;35m"  /**< Macro for magenta terminal output. */
-#define CYN   "\033[1;36m"  /**< Macro for cyan terminal output. */
-#define WHT   "\033[1;37m"  /**< Macro for white terminal output. */
+#define CYN   "\033[1;36m"  /**< Macro for cyan terminal output.    */
+#define WHT   "\033[1;37m"  /**< Macro for white terminal output.   */
 
-#define RESET "\x1B[0m"     /**< Macro to reset terminal color. */
+#define RESET "\x1B[0m"     /**< Macro to reset terminal color.     */
 
 
 

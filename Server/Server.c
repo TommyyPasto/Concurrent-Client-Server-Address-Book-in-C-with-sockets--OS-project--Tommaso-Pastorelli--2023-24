@@ -1,11 +1,12 @@
 /**
- * File: Server.c
- * Project: Address Book in C Language
+ * @file Server.c
  *
- * Description:
+ * @brief
  * This program implements a simple address book application
  * to manage contacts using the C programming language.
  *
+ * @details
+ * Project: Address Book in C Language
  * Author: Tommaso Pastorelli
  * Student ID: 7119242
  * Email: tommaso.pastorelli1@edu.unifi.it
@@ -34,7 +35,6 @@
  * to authenticate client requests after login.  It should be initialized during the login process.
  */
 TOKEN * sessionToken;
-
 
 
 /**

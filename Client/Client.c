@@ -26,6 +26,7 @@
  */
 
 #include "Client.h"
+#include <termios.h>
 
 
 //here we are defining some global values which come in handful since are to be accessed by many functions
@@ -35,6 +36,147 @@ int logged = 0; //used only for UI representation, the real login checking happe
 struct sockaddr_in serv_addr;
 int first = 1;
 int fileNumCounter = 1;
+int intChoice = 0;
+
+
+
+// Opzioni del menu
+const char *logged_in_options[] = {
+    "[1] LIST all contacts",
+    "[2] ADD a new contact",
+    "[3] MODIFY an existing contact",
+    "[4] DELETE a contact",
+    "[-] LOGOUT",
+    "[ EXIT ]"
+};
+
+// values
+const int numeric_menu_options[] = {
+    '1',
+    '2',
+    '3',
+    '4',
+    '-',
+    27
+};
+
+const char *logged_out_options[] = {
+    "[1] LIST all contacts",
+    "[🔒] LOGIN TO SEE OTHER AVAILABLE OPERATIONS [press '+']",
+    "[esc] EXIT"
+};
+
+const char **logged_options[] = {logged_out_options, logged_in_options};
+
+
+// Funzione per abilitare input non bloccante
+void enable_raw_mode() {
+    struct termios term;
+    if (tcgetattr(STDIN_FILENO, &term) == -1) return;
+    term.c_lflag &= ~(ICANON | ECHO); // Disabilita modalità canonica ed echo
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &term) == -1) return;
+}
+
+// Funzione per ripristinare il terminale
+void disable_raw_mode() {
+    struct termios term; 
+    if (tcgetattr(STDIN_FILENO, &term) == -1) return;
+    term.c_lflag |= (ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
+
+
+// Stampa il menu
+void printMenu(const char **options, int num_options, int selected, char * nextString) {
+    system("clear || cls");
+    printf("*****************************************************\n");
+    printf("*                                                   *\n");
+    printf("*%s            WELCOME TO THE ADDRESS BOOK%s            *\n", BLU, RESET);
+    printf("*                                                   *\n");
+    printf("*****************************************************\n\n");
+    //printf("%s\n", options[0]);
+    printf("%s  Choose an operation:%s\n", GRN, RESET);
+    printf("  ---------------------------------------------\n");
+
+    for (int i = 0; i < num_options; i++) {
+        if (i == selected) {
+            printf("  %s %s<%s\n", options[i], YEL, RESET);
+        } else {
+            printf("  %s\n", options[i]);
+        }
+    }
+
+    printf("  ---------------------------------------------\n");
+
+    printf("%s", nextString);
+    fflush(stdout);
+}
+
+// Menu interattivo
+int menu(int logged, const char **options, char * nextString) {
+    int selected = 0;
+    char input;
+
+    // Abilita modalità raw
+    enable_raw_mode();
+
+    while (1) {
+        int num_options = (logged == 1) ? 6 : 3;
+        printMenu(options, num_options, selected, nextString);
+
+        input = getchar();
+        if (input == '\033') { // Rileva sequenza di tasti (freccia)
+            getchar();         // Ignora '['
+            switch (getchar()) {
+                case 'A': // Freccia su
+                    selected = (selected - 1 + num_options) % num_options;
+                    break;
+                case 'B': // Freccia giù
+                    selected = (selected + 1) % num_options;
+                    break;
+            }
+        } else if (input == '\n') { // Invio
+            disable_raw_mode();
+            return selected + 1; // Restituisce l'opzione selezionata (1-based)
+        } else if (input == 27) { // ESC
+            disable_raw_mode();
+            return -1; // Indica uscita
+        }
+    }
+}
+
+
+
+char parseSelected(int selected, int logged){
+    if(logged == 1){
+        printf("Selected: %c\n", numeric_menu_options[selected - 1]);
+        return numeric_menu_options[selected - 1];
+    }else{
+        switch(selected){
+            case 1:
+                return '1';
+            case 2:
+                return '+';
+            case 3:
+                return 27;
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 struct sockaddr_in * buildSocketaddress(char * serverAddress, int serverPort){
@@ -132,7 +274,13 @@ void sigintHandler(int signum) {
 }
 
 
+char * getOutcomeString(int outcome){
+    return outcome_strings[outcome];
+}
+
+
 void printOutcome(int outcome){
+
     switch (outcome){
         case POSITIVE:
             printf(GRN"\n\n            "POSITIVE_STR RESET"\n\n\n");
@@ -169,63 +317,26 @@ void printOutcome(int outcome){
 }
 
 
-void printMenu(int logged){
-    if(logged == 1){
-    
-        printf("*****************************************************\n");
-        printf("*                                                   *\n");
-        printf("*"BLU"            WELCOME TO THE ADDRESS BOOK" RESET "            *\n" );
-        printf("*                                                   *\n");
-        printf("*****************************************************\n");
-        printf("\n");
-        printf(GRN"  Choose an operation:"RESET"\n");
-        printf("  ---------------------------------------------\n");
-        printf(YEL"  [1]"RESET" LIST all contacts\n");
-        printf(YEL"  [2]"RESET" ADD a new contact\n");
-        printf(YEL"  [3]"RESET" MODIFY an existing contact\n");
-        printf(YEL"  [4]"RESET" DELETE a contact\n");
-        printf(YEL"  [-]"RESET" LOGOUT\n");
-        printf(YEL"  [esc]"RESET" EXIT\n");
-        printf("  ---------------------------------------------\n");
-        printf("\n");
-    }else{
-    
-        printf("*****************************************************\n");
-        printf("*                                                   *\n");
-        printf("*"BLU"            WELCOME TO THE ADDRESS BOOK" RESET "            *\n" );
-        printf("*                                                   *\n");
-        printf("*****************************************************\n");
-        printf("\n");
-        printf(GRN"  Choose an operation:"RESET"\n");
-        printf("  ---------------------------------------------\n");
-        printf(YEL"  [1]"RESET" LIST all contacts\n");
-        printf(RED"  [🔒] LOGIN TO SEE OTHER AVAILABLE OPERATIONS[press '+']\n");
-        printf(YEL"  [esc]"RESET" EXIT\n");
-        printf("\n");
-    }
-}
-
 
 Message * choose_operation(){
+
     if(first == 1){
-        printMenu(logged);
+        intChoice = menu(logged, logged_options[logged], " ");
         first = 0;
     }
+    
+
+    printMenu(logged_options[logged], (logged == 1) ? 6 : 3, intChoice, " ");
+
+    char choice = parseSelected(intChoice, logged);
 
     //variables used for range and data checks for teminal menu printing, so basically only for users interface
     int choiceInCorrectRange = 1;
     int dataInsertedCorrectly = 1;
 
-    //variable which will contain the number of operation choosen by the user
-    char choice;
-    
     /*using a while loop to print out menu and eventual errors of sort
     until the user has chosen a certain operation and submitted correct data*/
     do{ 
-
-        printf(CYN"  Choose the operation: " RESET);
-        scanf("%s", &choice);
-        printf("\n");
 
         if(logged){
 
@@ -251,16 +362,18 @@ Message * choose_operation(){
                     data->operation = choice;
 
                     char * name, * lastName, * phoneNumber;
-                    name = malloc(20 * sizeof(char));
-                    lastName = malloc(20 * sizeof(char));
-                    phoneNumber = malloc(10 * sizeof(char));
+                    name = malloc(200 * sizeof(char));
+                    lastName = malloc(200 * sizeof(char));
+                    phoneNumber = malloc(200 * sizeof(char));
 
                     //checking name
                     printf(BLU"• Name: "RESET);
                     scanf("%s", name);
                     if(checkInsertedData(name, "name") == 0){
+                        
                         strcpy(data->name, name);
                     }else{
+                        
                         dataInsertedCorrectly = 0;
                         break;
                     }
@@ -321,38 +434,27 @@ Message * choose_operation(){
                     }
                     return data;
                 
-
+                case EXIT:
                 case LOGOUT: 
-                    data->operation = choice;
 
-                    logged = 0;
+                    if(logged == 1){
+                        data->operation = choice;
 
-                    free(sessionTOKEN);
-                    sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
+                        logged = 0;
+
+                        free(sessionTOKEN);
+                        sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
+                    }if(data->operation == EXIT){
+                        close(client_sock);
+                        exit(0);
+                    }
                 
                     //CHIEDI AL SERVER DI CHIUDERE IL FILE SOCKET CORRISPONDENTE E CHIUDI IL TUO LATO CLIENT
                     return data;
                     
-                case EXIT: 
-                    //SE SEI LOGGATO FAI LOGOUT E POI CHIUDI, ALTRIMENTI CHIUDI E BASTA
-                    return data;
+                
                     
                 default: 
-
-                    system("clear || cls");
-                    printMenu(logged);
-
-                    printf(RED "                       /\\\n");
-                    printf("                      /__\\\n");
-                    printf("                       ||\n");
-                    printf("                       ||\n");
-                    printf("   ******************************************** \n");
-                    printf("   ** PLEASE CHOOSE ONE OF THE ABOVE VALUES! ** \n");
-                    printf("   ******************************************** \n\n");
-
-                    choiceInCorrectRange = 0;
-
-                    sleep(1);
 
                     break;
             }
@@ -395,20 +497,13 @@ Message * choose_operation(){
 
                     return data;
 
-            //otherwise i ask to login first     
-            default:
-                system("clear || cls");
-                printMenu(logged);
-                
-                printf(RED"                  |\n"RESET);
-                printf(RED"                  |   (!!!)\n"RESET);
-                printf(RED"                  V\n"RESET);
-                printf(RED"\n    [!] YOU HAVE TO LOGIN FIRST!\n\n"RESET);
-                sleep(1);
-
-                choiceInCorrectRange = 0;
-                break;
-            }
+                case EXIT:
+                    close(client_sock);
+                    exit(0);
+    
+                default:
+                    break;
+                }
         }
         
     }while(choiceInCorrectRange == 0 || dataInsertedCorrectly == 0); 
@@ -442,9 +537,10 @@ void create_Message_String(char message[], Message * data){
 }
 
 
-void listContacts(char * contactList, int numContacts){
+char * listContacts(char * contactList, int numContacts){
     int i = 1;
-    printf(BLU"\n[LISTA CONTATTI]\n"RESET);
+    char * contactString = malloc((57 * numContacts) * sizeof(char));
+    sprintf(contactString, BLU"\n[LISTA CONTATTI]\n"RESET);
     do{
         char * list;
         list = &contactList[(i-1)*53];
@@ -454,32 +550,43 @@ void listContacts(char * contactList, int numContacts){
         name = strtok(contacts, " ");
         lastName = strtok(NULL, " ");
         phoneNumber = strtok(NULL, "\n");
-        printf(YEL"•"RESET" %s, %s, %s\n", name, lastName, phoneNumber);
+
+        char * tmp = malloc(57 * sizeof(char));
+        sprintf(tmp, YEL"•"RESET" %s, %s, %s\n", name, lastName, phoneNumber);
+
+        strcat(contactString, (const char *)tmp);
+
         i++;
     }while(i <= numContacts);
-    printf("\n\n");
+
+    return contactString;
 }
 
 
 int checkInsertedData(char * dataValue, char * typeOfData){
+    
+    char * nextString = malloc(200 * sizeof(char)); 
+    nextString[0] = '\0'; 
 
     //case 1 --> it is name or last name
     if(strcmp(typeOfData, "name") == 0 || strcmp(typeOfData, "last name") == 0){
         if(strlen(dataValue) > 20){
-            system("clear || cls");
-            printMenu(logged);
-            printf(RED "        *ERROR: name must be max 20 chars*\n" RESET);
+            
+            //filling the error string
+            strcat(nextString, RED "        *ERROR: name must be max 20 chars*\n" RESET);
             if(checkAlphaNumeric(dataValue) == -1){
-                printf(RED "        *ERROR: No special chars allowed*\n" RESET);
+                strcat(nextString, (RED "        *ERROR: No special chars allowed*\n" RESET));
             }
-            printf("\n");
+            
+            while(getchar() != '\n');
+            intChoice = menu(logged, logged_options[logged], nextString);
             return -1;
         }
         if(checkAlphaNumeric(dataValue) == -1){
-            system("clear || cls");
-            printMenu(logged);
-            printf(RED "        *ERROR: No special chars allowed*\n" RESET);
-            printf("\n");
+            
+            strcat(nextString, RED "        *ERROR: No special chars allowed*\n" RESET);
+            while(getchar() != '\n');
+            intChoice = menu(logged, logged_options[logged], nextString);
             return -1;
         }
         return 0;
@@ -488,20 +595,22 @@ int checkInsertedData(char * dataValue, char * typeOfData){
     //case 2 --> it is phone number
     else if (strcmp(typeOfData, "phone number") == 0){
         if(strlen(dataValue) > 10){
-            system("clear || cls");
-            printMenu(logged);
-            printf(RED "        *ERROR: phone number must be max 10 chars*\n" RESET);
+
+            //filling the error string
+            strcat(nextString, RED "        *ERROR: phone number must be max 10 chars*\n" RESET);
             if(checkNumber(dataValue) == -1){
-                printf(RED "        *ERROR: only insert numbers!*\n" RESET);
+                strcat(nextString, (RED "        *ERROR: only insert numbers!*\n" RESET));
             }
-            printf("\n");
+
+            while(getchar() != '\n');
+            intChoice = menu(logged, logged_options[logged], nextString);
             return -1;
         }
         if(checkNumber(dataValue) == -1){
-            system("clear || cls");
-            printMenu(logged);
-            printf(RED "        *ERROR: only insert numbers!*\n" RESET);
-            printf("\n");
+            
+            strcat(nextString, RED "        *ERROR: only insert numbers!*\n" RESET);
+            while(getchar() != '\n');
+            intChoice = menu(logged, logged_options[logged], nextString);
             return -1;
         }
         return 0;
@@ -509,18 +618,19 @@ int checkInsertedData(char * dataValue, char * typeOfData){
 
     //case 3 --> it is username or password
     else if (strcmp(typeOfData, "username") == 0 || strcmp(typeOfData, "password") == 0){
+        
         if(strlen(dataValue) > 20){
-            system("clear || cls");
-            printMenu(logged);
-            printf(RED "        *ERROR: username must be max 20 chars*\n" RESET);
-            printf("\n");
+            
+            strcat(nextString, RED "        *ERROR: username must be max 20 chars*\n" RESET);
+            while(getchar() != '\n');
+            intChoice = menu(logged, logged_options[logged], nextString);
             return -1;
         }
         if(strchr(dataValue, ' ')){
-            system("clear || cls");
-            printMenu(logged);
-            printf(RED "        *ERROR: no commas!*\n" RESET);
-            printf("\n");
+            
+            strcat(nextString, RED "        *ERROR: no commas!*\n" RESET);
+            while(getchar() != '\n');
+            intChoice = menu(logged, logged_options[logged], nextString);
             return -1;
         }
         return 0;
@@ -566,11 +676,10 @@ int main(int argc, char *argv[]) {
     //While the socket is still working the program keeps running
     int val = 0;
     while(1){
-
+        
         //using the choose operation function to build the data object values
         data = choose_operation();
 
-        //if the choosen operation is listing the address book data we make a different type of operation, so we divide it from the rest of the operations
         if(data->operation == LISTING){
             
             create_Message_String(message, data);
@@ -598,28 +707,37 @@ int main(int argc, char *argv[]) {
                         //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
                         printOutcome(buffer[0]); 
                         if(numContacts > 0){
-                            system("clear || cls");
+
                             //printing menu on terminal
-                            printMenu(logged);
-                            listContacts(&buffer[1], numContacts);
-                            
+                            char * nextString = malloc((57 * numContacts + 1000) * sizeof(char));
+                            nextString = listContacts(&buffer[1], numContacts);
+        
+                            printf("%s\n", nextString);
+
                             //asking if the user wants to save the results in a file
                             char c;
                             printf("Do you want to save these results in a file?[Y/n] ");
-                            scanf("%s", &c);
+                            scanf("%c", &c);
                             
-                            clear_last_n_lines(1);
+                            while (getchar() != '\n'); // Emptying the buffer since it happens to remain some residual input "\n"
+
+                                                        
                             if(c == 'Y')
                             {
-
                                 char * newResultsFilePath = malloc(100 * sizeof(char));
                                 sprintf(newResultsFilePath, "%s%d.txt", RESULTS_PATH, fileNumCounter);
-                                if(saveRecordsInAFile(newResultsFilePath, &buffer[1], numContacts, 3, 53, " ", "\n") == POSITIVE){
-                                    printf(GRN "                  RESULTS SAVED IN FILE" RESET" '%s%d.txt'\n\n" , RESULTS_PATH, fileNumCounter);
+                                int res;
+                                if((res = saveRecordsInAFile(newResultsFilePath, &buffer[1], numContacts, 3, 53, " ", "\n")) == POSITIVE){
+                                    char * tmp = malloc(400 * sizeof(char));
+                                    sprintf(tmp, GRN "\n\n                  RESULTS SAVED IN FILE" RESET" '%s%d.txt'\n\n" , RESULTS_PATH, fileNumCounter);
+                                    strcat(nextString, tmp);                            
                                 }
-
+                                
                                 fileNumCounter++;
                             }
+                            
+                            intChoice = menu(logged, logged_options[logged], nextString);
+                            
                         }
                     }else{
                         printf(RED SERVER_DISCONNECTED_ERROR RESET);
@@ -665,40 +783,57 @@ int main(int argc, char *argv[]) {
                 }
                 else if(outcome[0] == POSITIVE && val > 0){
                     
-                    system("clear || cls");
                     //printing menu on terminal
                     if(outcome[0] == POSITIVE)
                         logged = 1;
                     else
                         logged = 0;
                     
-                    printMenu(logged);
-                    
-                    printOutcome(outcome[0]);  
-
                     //if the operation was completed successfully we write the login token for the current session into the sessionTOKEN variable
                     strcpy(sessionTOKEN, &outcome[1]); 
 
                     //and we modify the UI value for logged(or not) user
                     logged = 1;
-                    printf("token: %s\n\n", sessionTOKEN, strlen(sessionTOKEN));
+                    printf("token: %s\n\n", sessionTOKEN);
+                    
+                    char * outcomeString = malloc(100 * sizeof(char));
+                    outcomeString[0] = '\0';
+                    strcat(outcomeString,getOutcomeString(outcome[0])); 
+                    strcat(outcomeString,GRN"\ntoken: "RESET);
+                    strcat(outcomeString, sessionTOKEN); 
+
+                    while(getchar() != '\n');
+                    intChoice = menu(logged, logged_options[logged], outcomeString);
+
+                    free(outcomeString);
+
+                    
                 }
             }else{
                 //doing the same thing for other operations
-                int32_t esito_t;
-                val = read(client_sock, &esito_t, sizeof(esito_t));
+                int32_t outcome_t;
+                val = read(client_sock, &outcome_t, sizeof(outcome_t));
                 if(val <= 0){
                     system("clear || cls");
                     printf(RED SERVER_DISCONNECTED_ERROR RESET);
                     tryConnection(client_sock, serv_addr);
                     continue;
                 }else{
-                    int esito = ntohl(esito_t);
-                    system("clear || cls");
+                    int outcome = ntohl(outcome_t);
+                    
                     //printing menu on terminal
-                    printMenu(logged);
-                    if(data->operation != LOGOUT)          
-                        printOutcome(esito); 
+                    if(data->operation != LOGOUT){ 
+
+                        char * outcomeString = getOutcomeString(outcome); 
+                        while(getchar() != '\n'); 
+                        intChoice = menu(logged, logged_options[logged], outcomeString);
+                    }else{
+
+                        logged = 0;
+                        intChoice = menu(logged, logged_options[logged], " ");
+
+                    }   
+                       
                 }   
             }
             
@@ -706,4 +841,3 @@ int main(int argc, char *argv[]) {
 
     }
 }
-
