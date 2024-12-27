@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <termios.h>
 
 #define RED   "\033[1;31m"  /**< Macro for red terminal output. */
 #define GRN   "\033[1;32m"  /**< Macro for green terminal output. */
@@ -80,6 +81,20 @@ int checkFileOpened(char * pathname);
  * @return 0 on success, -1 on error.
  */
 int saveRecordsInAFile(char * filepath, char * msg, int nOfRecords, int nOfFields, int recordsLength,  const char *__restrict__ delim, const char *__restrict__  endOfRecDelim);
+
+
+
+/**
+ * @brief Enables raw mode for terminal input. This function disables canonical input processing and echo.
+ */
+void enable_raw_mode();
+
+
+
+/**
+ * @brief Disables raw mode for terminal input, restoring default terminal behavior.
+ */
+void disable_raw_mode();
 
 
 #endif

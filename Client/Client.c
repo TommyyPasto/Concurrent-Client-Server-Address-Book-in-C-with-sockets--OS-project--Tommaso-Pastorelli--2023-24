@@ -26,7 +26,6 @@
  */
 
 #include "Client.h"
-#include <termios.h>
 
 
 //here we are defining some global values which come in handful since are to be accessed by many functions
@@ -40,7 +39,7 @@ int intChoice = 0;
 
 
 
-// Opzioni del menu
+// Menu options for logged users
 const char *logged_in_options[] = {
     "[1] LIST all contacts",
     "[2] ADD a new contact",
@@ -49,6 +48,15 @@ const char *logged_in_options[] = {
     "[-] LOGOUT",
     "[ EXIT ]"
 };
+
+
+//menu options for non logged users
+const char *logged_out_options[] = {
+    "[1] LIST all contacts",
+    "[🔒] LOGIN TO SEE OTHER AVAILABLE OPERATIONS [press '+']",
+    "[esc] EXIT"
+};
+
 
 // values
 const int numeric_menu_options[] = {
@@ -60,33 +68,10 @@ const int numeric_menu_options[] = {
     27
 };
 
-const char *logged_out_options[] = {
-    "[1] LIST all contacts",
-    "[🔒] LOGIN TO SEE OTHER AVAILABLE OPERATIONS [press '+']",
-    "[esc] EXIT"
-};
-
+//we use this because its easier to use when calling menu function
 const char **logged_options[] = {logged_out_options, logged_in_options};
 
 
-// Funzione per abilitare input non bloccante
-void enable_raw_mode() {
-    struct termios term;
-    if (tcgetattr(STDIN_FILENO, &term) == -1) return;
-    term.c_lflag &= ~(ICANON | ECHO); // Disabilita modalità canonica ed echo
-    if (tcsetattr(STDIN_FILENO, TCSANOW, &term) == -1) return;
-}
-
-// Funzione per ripristinare il terminale
-void disable_raw_mode() {
-    struct termios term; 
-    if (tcgetattr(STDIN_FILENO, &term) == -1) return;
-    term.c_lflag |= (ICANON | ECHO);
-    tcsetattr(STDIN_FILENO, TCSANOW, &term);
-}
-
-
-// Stampa il menu
 void printMenu(const char **options, int num_options, int selected, char * nextString) {
     system("clear || cls");
     printf("*****************************************************\n");
@@ -112,39 +97,45 @@ void printMenu(const char **options, int num_options, int selected, char * nextS
     fflush(stdout);
 }
 
-// Menu interattivo
+
 int menu(int logged, const char **options, char * nextString) {
     int selected = 0;
-    char input;
+    char input = 0;
 
-    // Abilita modalità raw
+    // raw mode(no blocking input)
     enable_raw_mode();
+
 
     while (1) {
         int num_options = (logged == 1) ? 6 : 3;
         printMenu(options, num_options, selected, nextString);
 
         input = getchar();
-        if (input == '\033') { // Rileva sequenza di tasti (freccia)
-            getchar();         // Ignora '['
+        printf("input: %d\n\n\n\n\n",input);
+        fflush(stdout);
+        sleep(1);
+
+        if (input == '\u001b') { // ESC
+            disable_raw_mode();
+            exit(0); // Indica uscita
+        }
+        
+        if (input == '\033') { 
+            getchar();         
             switch (getchar()) {
-                case 'A': // Freccia su
+                case 'A': // arrow up
                     selected = (selected - 1 + num_options) % num_options;
                     break;
-                case 'B': // Freccia giù
+                case 'B': // arrow down
                     selected = (selected + 1) % num_options;
                     break;
             }
-        } else if (input == '\n') { // Invio
+        } else if (input == '\n') { // enter
             disable_raw_mode();
-            return selected + 1; // Restituisce l'opzione selezionata (1-based)
-        } else if (input == 27) { // ESC
-            disable_raw_mode();
-            return -1; // Indica uscita
-        }
+            return selected + 1; // returns the selected option
+        } 
     }
 }
-
 
 
 char parseSelected(int selected, int logged){
@@ -162,21 +153,6 @@ char parseSelected(int selected, int logged){
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 struct sockaddr_in * buildSocketaddress(char * serverAddress, int serverPort){
@@ -240,6 +216,7 @@ int tryConnection(int sock, struct sockaddr_in * serv_addr){
         }else{
             first = 1;
             printOutcome(outcome);
+            sleep(1.5);
             return sock;
         }
     }
@@ -315,7 +292,6 @@ void printOutcome(int outcome){
         
     }
 }
-
 
 
 Message * choose_operation(){
@@ -444,18 +420,14 @@ Message * choose_operation(){
 
                         free(sessionTOKEN);
                         sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
-                    }if(data->operation == EXIT){
+                    }//if we only want to logout, we execute the above, else if we are not logged in, we execute only this
+                    if(data->operation == EXIT){
                         close(client_sock);
                         exit(0);
                     }
-                
-                    //CHIEDI AL SERVER DI CHIUDERE IL FILE SOCKET CORRISPONDENTE E CHIUDI IL TUO LATO CLIENT
                     return data;
-                    
-                
-                    
-                default: 
 
+                default: 
                     break;
             }
         }else{
@@ -776,6 +748,7 @@ int main(int argc, char *argv[]) {
                 char outcome[33];
                 val = read(client_sock, outcome, sizeof(outcome));
                 if(val <= 0){
+                    
                     system("clear || cls");
                     printf(RED SERVER_DISCONNECTED_ERROR RESET);
                     tryConnection(client_sock, serv_addr);

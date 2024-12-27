@@ -230,4 +230,29 @@ void printOutcome(int outcome);
 int checkInsertedData(char * dataValue, char * typeOfData);
 
 
+
+/**
+ * @brief Prints the menu to the console.
+ *
+ * @param options The array of menu options to display.
+ * @param num_options The number of options in the `options` array.
+ * @param selected The index of the currently selected option.
+ * @param nextString A string to be printed after the menu options for additional messages or information.
+ */
+void printMenu(const char **options, int num_options, int selected, char *nextString);
+
+
+
+/**
+ * @brief Displays an interactive menu and returns the user's selected option.
+ *
+ * @param logged An integer indicating whether the user is logged in (1) or not (0).  This determines which set of menu options to display.
+ * @param options The array of menu options to display.
+ * @param nextString A string to print below the menu for additional error messages.
+ * @return The index (1-based) of the selected option. Returns 0 if the user chooses to exit.
+ */
+int menu(int logged, const char **options, char *nextString);
+
+
+
 #endif
