@@ -3,6 +3,4 @@ nome2 cognome2 2
 n3 c3 3
 nome4 cognome4 4
 nome5 cognome5 5
-skibidi tommy 5
-toilet skibidi 96
-jjj tom 23
+

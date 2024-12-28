@@ -176,50 +176,6 @@ int execute_operation(Message * data){
 
 
 
-char * readContacts(){
-    logAnEvent(LISTING, (Message *) NULL, client_ip, getCurrentTimeStr());
-    int nContacts;
-    int outcome;
-    char buffer[53];
-    char * contactsList;
-    FILE * contacts;
-
-    contacts = fopen(CONTACTS_PATH, "a+");
-    
-    //locking file
-    struct flock * fl = lockRD(contacts, 0, EOF, F_SETLKW);
-
-    nContacts = numberOfRecords(contacts, 53);
-
-    contactsList = malloc(2 + nContacts * 53 * sizeof(char));
-
-    if(nContacts == 0){
-        unlockFile(contacts, fl);
-        contactsList[1] = ZERO_CONTACTS_SAVED;
-        return contactsList;
-    }
-
-    fseek(contacts, 0, SEEK_SET);
-
-    int i = 0;
-    //filling the buffer with the current line data and adding it to "contactsList" array
-    while(fgets(buffer, sizeof(buffer), contacts)){
-        char * str = &contactsList[i * 53 + 2];
-        strncpy(str, buffer, 53);
-        printf("%s\n", str);
-        i++;
-    }
-
-    unlockFile(contacts, fl);
-    fclose(contacts);
-
-    contactsList[1] = POSITIVE;
-    contactsList[0] = nContacts;
-    return contactsList;
-}
-
-
-
 int insertContact(Message * data){
 
     fflush(stdout);
@@ -465,7 +421,111 @@ int search_And_Set_ContactIndex(FILE * contacts, Message * data){
 
 
 
-int numberOfRecords(FILE * file, int recordSize){
+int * numberOfRecordsWithParameters(FILE * file, Message * data, int recordSize){
+    int * foundContactsPosition = malloc(2 * sizeof(int));
+    char buffer[recordSize];
+    int count = 0;
+    int i = 0;
+
+    //else we continue and find our wanted records
+    fseek(file, 0, SEEK_SET);
+
+    while(fgets(buffer, sizeof(buffer), file)){
+        int found = 1;
+        char * name = strtok(buffer, " ");
+        char * lastName = strtok(NULL, " ");
+        char * phoneNumber = strtok(NULL, "\n");
+        if(strcmp(data->name, "-") != 0 && strcmp(data->name, name) != 0){
+            found = 0; 
+            i++; 
+            continue;      
+        }
+        if(strcmp(data->lastName, "-") != 0 && strcmp(data->lastName, lastName) != 0){
+            found = 0;
+            i++; 
+            continue;
+        }
+        if(strcmp(data->phoneNumber, "-") != 0 && strcmp(data->phoneNumber, phoneNumber) != 0){
+            found = 0;
+            i++; 
+            continue;
+        }
+        if(found == 1){
+            foundContactsPosition = realloc(foundContactsPosition, (1 + (count + 1)) * sizeof(int));
+            foundContactsPosition[count + 1] = i;
+            count++;
+            i++; 
+        }
+    }
+    foundContactsPosition[0] = count;
+    return foundContactsPosition;
+}
+
+
+
+char * searchContacts(Message * data){
+    if(data->operation == LISTING)
+        logAnEvent(LISTING, (Message *) NULL, client_ip, getCurrentTimeStr());  
+    else
+        logAnEvent(SEARCH, data, client_ip, getCurrentTimeStr());
+
+    int outcome;
+    char buffer[53];
+    char * contactsList;
+    FILE * contacts;
+
+    contacts = fopen(CONTACTS_PATH, "a+");
+    
+    //locking file
+    struct flock * fl = lockRD(contacts, 0, EOF, F_SETLKW);
+
+    printf("1 - inizio ricerca\n");
+    fflush(stdout);
+
+    //returns an array with the num of found contacts in first pos. and the contacts positions after
+    int * foundContactsPosition = numberOfRecordsWithParameters(contacts, data, 53);
+
+    printf("2 - letto le posizioni: %d\n", foundContactsPosition[0]);
+    fflush(stdout);
+
+    contactsList = malloc((2 + foundContactsPosition[0] * 53) * sizeof(char));
+
+    if(foundContactsPosition[0] == 0){
+        unlockFile(contacts, fl);
+        contactsList[1] = ZERO_CONTACTS_SAVED;
+        return contactsList;
+    }
+
+    fseek(contacts, 0, SEEK_SET);
+
+    int i = 0;
+    int j = 1;
+    //filling the buffer with the current line data and adding it to "contactsList" array
+    while(fgets(buffer, sizeof(buffer), contacts)){
+        if(i == foundContactsPosition[j]){
+            char * str = &contactsList[(j-1) * 53 + 2];
+            str[0] = '\0';
+            strncpy(str, buffer, 53);
+            printf("%s%s\n", str, &contactsList[((j-1) * 53) + 2]);
+            j++;
+            if(j > foundContactsPosition[0])
+                break;
+        }
+        i++;
+    }
+
+    unlockFile(contacts, fl);
+    fclose(contacts);
+
+    contactsList[1] = POSITIVE;
+    contactsList[0] = foundContactsPosition[0];
+    
+    return contactsList;
+}
+
+
+
+int totalNumberOfRecords(FILE * file, int recordSize){
     char buffer[recordSize];
     int count = 0;
     fseek(file, 0, SEEK_SET);
@@ -559,7 +619,7 @@ int rewriteAddressBook(Message * data){
                 lastName = strtok(NULL, " ");
                 phoneNumber = strtok(NULL, "\n");
 
-                //controllo ogni ciclo se questa riga contiene o meno il contatto ricercato e in caso stampo il contatto modificato sul file temporaneo
+                //i check every loop it. if this line contains or not the searched contact, printing the outcome of the operation on terminal
                 if(strcmp(name, data->name) == 0 && strcmp(lastName, data->lastName) == 0 && strcmp(phoneNumber, data->phoneNumber) == 0){
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", data->new_name, data->new_lastName, data->new_phoneNumber);
                     if((int)(strlen(data->new_name)+strlen(data->new_lastName)+strlen(data->new_phoneNumber)+3) != nCharWritten || nCharWritten == -1){
@@ -612,8 +672,6 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
     switch(eventCode){
         case SUCCESSFUL_CONNECTION_ATTEMPT:
             outcome = fprintf(logfile, "[%s] Client %s connected successfully (process with PID: %d created)\n", time, address, getpid());
-            printf("errore: %d\n", outcome);
-            fflush(stdout);
             break;
         case UNSUCCESSFUL_CONNECTION_ATTEMPT:
             outcome = fprintf(logfile, "[%s] Client %s connected unsuccessfully(too many clients connected)\n", time, address);
@@ -623,6 +681,9 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
             break;
         case LISTING:
             outcome = fprintf(logfile, "[%s] Client %s requested LISTING operation (PID: %d)\n", time, address, pid);
+            break;
+        case SEARCH:
+            outcome = fprintf(logfile, "[%s] Client %s requested SEARCH operation with parameters {%s %s %s}(PID: %d)\n", time, address, (strcmp(data->name, "-") == 0) ? "None" : data->name, (strcmp(data->lastName, "-") == 0) ? "None" : data->lastName, (strcmp(data->phoneNumber, "-") == 0) ? "None" : data->phoneNumber, getpid());
             break;
         case INSERT:
             outcome = fprintf(logfile, "[%s] Client %s requested INSERT of contact {%s %s %s}(PID: %d)\n", time, address, data->name, data->lastName, data->phoneNumber, getpid());
@@ -648,7 +709,6 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
     }
     
     unlockFile(logfile, fl);
-    printf("ci sono\n");
     fflush(stdout);
     
     fclose(logfile);
@@ -773,19 +833,10 @@ int main(int argc, char *argv[]) {
                 //so we have to put a check afterward so that the disconnection is registered in the log and the process exits
                 valread = read(client_socket, buffer, BUFFER_SIZE);
                 if(valread <= 0){
-                    printf("read from client failed(valread = %d)\n", valread);
-                    fflush(stdout);
                     logAnEvent(DISCONNECTION, (Message *) NULL, client_ip, getCurrentTimeStr());
                     close(client_socket);
                     exit(-1);
                 }
-                
-                printf("\n\n(valread = %d)buffer:\n\n", valread);
-                fflush(stdout);
-                for(int i = 0; i < valread; i++){
-                    printf("%c\n", buffer[i]);
-                    fflush(stdout);
-                } 
                 
                 // returns buffers data into a proper struct
                 Message * data = deconstruct_Message_String(buffer);
@@ -793,12 +844,16 @@ int main(int argc, char *argv[]) {
                 fflush(stdout);
 
                 //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
-                if(data->operation == LISTING){
-                    char * contactsList = readContacts();
+                if(data->operation == LISTING || data->operation == SEARCH){
+                    
+                    char * contactsList = searchContacts(data);
                     int32_t nContacts_uint = htonl(contactsList[0]);
+                    printf("contatti trovati: %d\n", contactsList[0]);
+
                     write(client_socket, &nContacts_uint, sizeof(nContacts_uint));
                     write(client_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53 + 1));
                     free(contactsList);
+
                     free(data);
                 }else{ 
                     if(data->operation != LOGIN){

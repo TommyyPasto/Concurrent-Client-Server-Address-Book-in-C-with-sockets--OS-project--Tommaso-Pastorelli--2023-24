@@ -29,47 +29,41 @@
 
 
 //here we are defining some global values which come in handful since are to be accessed by many functions
+/**
+ * @brief Session token for authentication.
+ */
 TOKEN sessionTOKEN;
+
+/**
+ * @brief Client socket file descriptor.
+ */
+
 int client_sock;
-int logged = 0; //used only for UI representation, the real login checking happens server's side
+/**
+ * @brief Login status (UI representation).  Actual login check is server-side.
+ */
+
+int logged = 0; 
+/**
+ * @brief Server address structure.
+ */
+
 struct sockaddr_in serv_addr;
+/**
+ * @brief Flag indicating first menu iteration.
+ */
+
 int first = 1;
+/**
+ * @brief Counter for file numbers.
+ */
+
 int fileNumCounter = 1;
-int intChoice = 0;
+/**
+ * @brief Integer choice from the menu.
+ */
 
-
-
-// Menu options for logged users
-const char *logged_in_options[] = {
-    "[1] LIST all contacts",
-    "[2] ADD a new contact",
-    "[3] MODIFY an existing contact",
-    "[4] DELETE a contact",
-    "[-] LOGOUT",
-    "[ EXIT ]"
-};
-
-
-//menu options for non logged users
-const char *logged_out_options[] = {
-    "[1] LIST all contacts",
-    "[🔒] LOGIN TO SEE OTHER AVAILABLE OPERATIONS [press '+']",
-    "[esc] EXIT"
-};
-
-
-// values
-const int numeric_menu_options[] = {
-    '1',
-    '2',
-    '3',
-    '4',
-    '-',
-    27
-};
-
-//we use this because its easier to use when calling menu function
-const char **logged_options[] = {logged_out_options, logged_in_options};
+int intChoice = 0; 
 
 
 void printMenu(const char **options, int num_options, int selected, char * nextString) {
@@ -105,23 +99,15 @@ int menu(int logged, const char **options, char * nextString) {
     // raw mode(no blocking input)
     enable_raw_mode();
 
-
     while (1) {
-        int num_options = (logged == 1) ? 6 : 3;
+        int num_options = (logged == 1) ? 7 : 4;
         printMenu(options, num_options, selected, nextString);
 
         input = getchar();
-        printf("input: %d\n\n\n\n\n",input);
-        fflush(stdout);
-        sleep(1);
-
-        if (input == '\u001b') { // ESC
-            disable_raw_mode();
-            exit(0); // Indica uscita
-        }
         
+        //since the arrow up/down chars are '\033[A/B we have to do multiple calls of getchar function
         if (input == '\033') { 
-            getchar();         
+            getchar();      //reading the '[' char   
             switch (getchar()) {
                 case 'A': // arrow up
                     selected = (selected - 1 + num_options) % num_options;
@@ -140,15 +126,16 @@ int menu(int logged, const char **options, char * nextString) {
 
 char parseSelected(int selected, int logged){
     if(logged == 1){
-        printf("Selected: %c\n", numeric_menu_options[selected - 1]);
         return numeric_menu_options[selected - 1];
     }else{
         switch(selected){
             case 1:
                 return '1';
             case 2:
-                return '+';
+                return '2';
             case 3:
+                return '+';
+            case 4:
                 return 27;
         }
     }
@@ -188,9 +175,12 @@ int connect_To_Server(char * serverAddress, int serverPort){
 
 int tryConnection(int sock, struct sockaddr_in * serv_addr){
     int outcome;
+    int cleanInput = 0;
+    system("clear");
     //Connection to server
     while(1){
         if(connect(sock, serv_addr, sizeof(*serv_addr)) < 0 || (outcome = checkTooManyClientsConnected(sock, serv_addr)) != CONNECTION_ACCEPTED) {
+            cleanInput = 1;
             printOutcome(outcome);
 
             //recreating sock
@@ -213,7 +203,12 @@ int tryConnection(int sock, struct sockaddr_in * serv_addr){
                 close(sock);
                 exit(-1);
             }
+            
         }else{
+            
+            if(cleanInput == 1){
+                while(getchar() != '\n');
+            }
             first = 1;
             printOutcome(outcome);
             sleep(1.5);
@@ -239,15 +234,6 @@ int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_ad
     }
 
     return ntohl(outcome_uint);
-}
-
-
-void sigintHandler(int signum) {
-    printf("\n\n");
-    printf(YEL"               you are now exiting the program..."RESET);
-    printf("\n");
-    close(client_sock);
-    exit(0);
 }
 
 
@@ -302,7 +288,7 @@ Message * choose_operation(){
     }
     
 
-    printMenu(logged_options[logged], (logged == 1) ? 6 : 3, intChoice, " ");
+    printMenu(logged_options[logged], (logged == 1) ? 7 : 4, intChoice, " ");
 
     char choice = parseSelected(intChoice, logged);
 
@@ -310,25 +296,84 @@ Message * choose_operation(){
     int choiceInCorrectRange = 1;
     int dataInsertedCorrectly = 1;
 
+
     /*using a while loop to print out menu and eventual errors of sort
     until the user has chosen a certain operation and submitted correct data*/
     do{ 
-
+        
         if(logged){
-
+            
             //defining and taking memory space to save message datas
             Message * data;
             data = malloc(sizeof(Message));
+
+            
 
             //initializing the interface check variables
             choiceInCorrectRange = 1;
             dataInsertedCorrectly = 1;
 
+            char * name, * lastName, * phoneNumber;
             //building the message and doing specific checks on data based on the chosen operation
             switch(choice){
                 
                 case LISTING:
+                
                     data->operation = choice;
+                    strcpy(data->name, "-");
+                    strcpy(data->lastName, "-");
+                    strcpy(data->phoneNumber, "-");
+                    return data;
+                
+                case SEARCH:
+                    
+                    data->operation = choice;
+                    name = malloc(200 * sizeof(char));
+                    lastName = malloc(200 * sizeof(char));
+                    phoneNumber = malloc(200 * sizeof(char));
+
+                    //checking name
+                    printf(YEL"NOTE! -> Insert '-' if you dont want to specify that field:\n"RESET);
+                    printf(BLU"• Name: "RESET);
+                    scanf("%s", name);
+                    if(strcmp(name, "-") == 0){
+                        strcpy(data->name, "-");
+                        dataInsertedCorrectly = 0;
+                    }
+                    else if(checkInsertedData(name, "name") == 0){
+                        strcpy(data->name, name);
+                    }else{
+                        dataInsertedCorrectly = 0;
+                        break;
+                    }
+                    
+                    //checking last name
+                    printf(BLU"• Last name: "RESET);
+                    scanf("%s", lastName);
+                    if(strcmp(lastName, "-") == 0){
+                        strcpy(data->lastName, "-");
+                        dataInsertedCorrectly = 0;
+                    }
+                    else if(checkInsertedData(lastName, "last name") == 0){
+                        strcpy(data->lastName, lastName);
+                    }else{
+                        dataInsertedCorrectly = 0;
+                        break;
+                    }
+                        
+                    //checking phone number
+                    printf(BLU"• Phone number: "RESET);
+                    scanf("%s", phoneNumber);
+                    if(strcmp(phoneNumber, "-") == 0){
+                        strcpy(data->phoneNumber, "-");
+                        dataInsertedCorrectly = 0;
+                    }
+                    else if(checkInsertedData(phoneNumber, "phone number") == 0){
+                        strcpy(data->phoneNumber, phoneNumber);
+                    }else{
+                        dataInsertedCorrectly = 0;
+                        break;
+                    }
                     return data;
 
                 case INSERT: 
@@ -337,7 +382,6 @@ Message * choose_operation(){
                     
                     data->operation = choice;
 
-                    char * name, * lastName, * phoneNumber;
                     name = malloc(200 * sizeof(char));
                     lastName = malloc(200 * sizeof(char));
                     phoneNumber = malloc(200 * sizeof(char));
@@ -379,7 +423,7 @@ Message * choose_operation(){
                     if(choice == EDIT){
                         
                         //checking name
-                        printf(BLU"• Name: "RESET);
+                        printf(GRN"• New name: "RESET);
                         scanf("%s", name);
                         if(checkInsertedData(name, "name") == 0){
                             strcpy(data->new_name, name);
@@ -389,7 +433,7 @@ Message * choose_operation(){
                         }
 
                         //checking last name
-                        printf(BLU"• Last name: "RESET);
+                        printf(GRN"• New last name: "RESET);
                         scanf("%s", lastName);
                         if(checkInsertedData(lastName, "last name") == 0){
                             strcpy(data->new_lastName, lastName);
@@ -399,7 +443,7 @@ Message * choose_operation(){
                         }
 
                         //checking phone number
-                        printf(BLU"• Phone number: "RESET);
+                        printf(GRN"• New phone number: "RESET);
                         scanf("%s", phoneNumber);
                         if(checkInsertedData(phoneNumber, "phone number") == 0){
                             strcpy(data->new_phoneNumber, phoneNumber);
@@ -442,8 +486,63 @@ Message * choose_operation(){
                 
                 case LISTING:
                     data->operation = LISTING; 
+                    strcpy(data->name, "-");
+                    strcpy(data->lastName, "-");
+                    strcpy(data->phoneNumber, "-");
                     return data;
+                
+                case SEARCH:
+                    data->operation = SEARCH;
+                    
+                    char * name, * lastName, * phoneNumber;
+                    name = malloc(200 * sizeof(char));
+                    lastName = malloc(200 * sizeof(char));
+                    phoneNumber = malloc(200 * sizeof(char));
 
+                    //checking name
+                    printf(YEL"NOTE! -> Insert '-' if you dont want to specify that field:\n"RESET);
+                    printf(BLU"• Name: "RESET);
+                    scanf("%s", name);
+                    if(strcmp(name, "-") == 0){
+                        strcpy(data->name, "-");
+                        dataInsertedCorrectly = 0;
+                    }
+                    else if(checkInsertedData(name, "name") == 0){
+                        strcpy(data->name, name);
+                    }else{
+                        dataInsertedCorrectly = 0;
+                        break;
+                    }
+                    
+                    //checking last name
+                    printf(BLU"• Last name: "RESET);
+                    scanf("%s", lastName);
+                    if(strcmp(lastName, "-") == 0){
+                        strcpy(data->lastName, "-");
+                        dataInsertedCorrectly = 0;
+                    }
+                    else if(checkInsertedData(lastName, "last name") == 0){
+                        strcpy(data->lastName, lastName);
+                    }else{
+                        dataInsertedCorrectly = 0;
+                        break;
+                    }
+                        
+                    //checking phone number
+                    printf(BLU"• Phone number: "RESET);
+                    scanf("%s", phoneNumber);
+                    if(strcmp(phoneNumber, "-") == 0){
+                        strcpy(data->phoneNumber, "-");
+                        dataInsertedCorrectly = 0;
+                    }
+                    else if(checkInsertedData(phoneNumber, "phone number") == 0){
+                        strcpy(data->phoneNumber, phoneNumber);
+                    }else{
+                        dataInsertedCorrectly = 0;
+                        break;
+                    }
+                    return data;
+                
                 case LOGIN: 
                     data->operation = LOGIN;
 
@@ -612,6 +711,14 @@ int checkInsertedData(char * dataValue, char * typeOfData){
 }
 
 
+void sigintHandler(int signum) {
+    printf("\n\n");
+    printf(YEL"               you are now exiting the program..."RESET);
+    printf("\n");
+    close(client_sock);
+    exit(0);
+}
+
 
 /**
  * @brief Main function of the server.  Handles client connections, forks child processes, and processes client requests.
@@ -625,10 +732,11 @@ int main(int argc, char *argv[]) {
     char * address = (strcmp(argv[1], "localhost") == 0) ? "127.0.0.1" : argv[1];
     int port = atoi(argv[2]);
 
+    fflush(stdin);
+
     system("clear || cls");
 
     signal(SIGINT, sigintHandler);
-    //signal(SIGPIPE, sigpipeHandler);
 
     //defining a space in memory for the token to be used for login and operations
     sessionTOKEN = malloc(TOKEN_LENGTH_ * sizeof(char));
@@ -652,8 +760,8 @@ int main(int argc, char *argv[]) {
         //using the choose operation function to build the data object values
         data = choose_operation();
 
-        if(data->operation == LISTING){
-            
+        if(data->operation == LISTING || data->operation == SEARCH){
+
             create_Message_String(message, data);
             
             //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
@@ -686,16 +794,19 @@ int main(int argc, char *argv[]) {
         
                             printf("%s\n", nextString);
 
+                           // while (getchar() != '\n');
                             //asking if the user wants to save the results in a file
                             char c;
                             printf("Do you want to save these results in a file?[Y/n] ");
                             scanf("%c", &c);
                             
                             while (getchar() != '\n'); // Emptying the buffer since it happens to remain some residual input "\n"
-
                                                         
                             if(c == 'Y')
                             {
+                                printf("im here\n");
+                                fflush(stdout);
+                                sleep(2);
                                 char * newResultsFilePath = malloc(100 * sizeof(char));
                                 sprintf(newResultsFilePath, "%s%d.txt", RESULTS_PATH, fileNumCounter);
                                 int res;

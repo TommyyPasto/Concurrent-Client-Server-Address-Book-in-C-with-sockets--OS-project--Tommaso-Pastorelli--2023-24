@@ -79,12 +79,57 @@ const char * outcome_strings[] = {
 
 
 
+
+// CONST. VALUES FOR MENU REPRESENTATION AND CHOICES OF OPERATIONS
+//                      |
+//                      V
+//-----------------------------------------------------------------------
+
+// Menu options for logged users
+const char *logged_in_options[] = {
+    "[1] LIST all contacts",
+    "[2] SEARCH for contacts",
+    "[3] ADD a new contact",
+    "[4] MODIFY an existing contact",
+    "[5] DELETE a contact",
+    "[-] LOGOUT",
+    "[ EXIT ]"
+};
+
+
+//menu options for non logged users
+const char *logged_out_options[] = {
+    "[1] LIST all contacts",
+    "[2] SEARCH for contacts",
+    "[🔒] LOGIN to see other available operations",
+    "[ EXIT ]"
+};
+
+
+// values
+const int numeric_menu_options[] = {
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '-',
+    27
+};
+
+//we use this because its easier to use when calling menu function
+const char **logged_options[] = {logged_out_options, logged_in_options};
+
+//-----------------------------------------------------------------------
+
+
 // OPERATION VALUES
 
 #define LISTING '1'
-#define INSERT '2'
-#define EDIT '3'
-#define DELETE '4'
+#define SEARCH '2'
+#define INSERT '3'
+#define EDIT '4'
+#define DELETE '5'
 #define LOGIN '+'
 #define LOGOUT '-'
 #define EXIT 27
@@ -252,6 +297,44 @@ void printMenu(const char **options, int num_options, int selected, char *nextSt
  * @return The index (1-based) of the selected option. Returns 0 if the user chooses to exit.
  */
 int menu(int logged, const char **options, char *nextString);
+
+
+
+/**
+ * @brief Parses the selected option from the menu and returns the corresponding operation character.
+ *
+ * @param selected The index of the selected option (1-based).
+ * @param logged  An integer indicating whether the user is logged in (1) or not (0).
+ * @return The character representing the selected operation.
+ */
+char parseSelected(int selected, int logged);
+
+
+/**
+ * @brief Handles the SIGINT signal (Ctrl+C) to gracefully exit the program.
+ *
+ * @param signum The signal number.
+ */
+void sigintHandler(int signum);
+
+/**
+ * @brief Checks if the server sent a "too many clients connected" message.
+ *
+ * @param client_socket The client socket.
+ * @param serv_addr The server address.
+ * @return The outcome code received from the server.
+ */
+int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_addr);
+
+
+/**
+ * @brief Gets the string representation of an outcome code.
+ *
+ * @param outcome The outcome code.
+ * @return A pointer to the string representation of the outcome code.
+ */
+char * getOutcomeString(int outcome);
+
 
 
 

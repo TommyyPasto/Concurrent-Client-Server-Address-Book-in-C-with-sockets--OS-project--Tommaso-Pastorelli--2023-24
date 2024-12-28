@@ -52,12 +52,12 @@ char * LOG_PATH = "/home/tommy/ProgettoSO/Server/files/log.txt";
 //OPER. NUMS
 
 #define LISTING '1'
-#define INSERT '2'
-#define EDIT '3'
-#define DELETE '4'
+#define SEARCH '2'
+#define INSERT '3'
+#define EDIT '4'
+#define DELETE '5'
 #define LOGIN '+'
 #define LOGOUT '-'
-
 
 
 
@@ -86,7 +86,6 @@ char * LOG_PATH = "/home/tommy/ProgettoSO/Server/files/log.txt";
 
 
 
-
 typedef struct{
     char operation;
     char name[20];
@@ -99,16 +98,6 @@ typedef struct{
     char psw[20];
     char token[32];
 }Message;
-
-
-struct Contatto{
-    char name[20];
-    char cognome[20];
-    char numTel[20];
-};
-
-
-
 
 
 
@@ -315,7 +304,7 @@ int search_And_Set_ContactIndex(FILE * contacts, Message * data);
  * @pre Contacts file open in read mode.
  * @post File pointer at end of file.
  */
-int numberOfRecords(FILE * file, int recordSize);
+int totalNumberOfRecords(FILE * file, int recordSize);
 
 
 /**

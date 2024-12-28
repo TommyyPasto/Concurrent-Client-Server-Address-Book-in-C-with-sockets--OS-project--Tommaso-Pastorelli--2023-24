@@ -77,14 +77,12 @@ int saveRecordsInAFile(char * filepath, char * msg, int nOfRecords, int nOfField
 }
 
 
-
 void enable_raw_mode() {
     struct termios term;
     if (tcgetattr(STDIN_FILENO, &term) == -1) return;
     term.c_lflag &= ~(ICANON | ECHO); // Unabling echo
     if (tcsetattr(STDIN_FILENO, TCSANOW, &term) == -1) return;
 }
-
 
 
 void disable_raw_mode() {

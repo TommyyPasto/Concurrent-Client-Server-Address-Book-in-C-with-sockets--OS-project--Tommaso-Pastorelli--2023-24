@@ -35,7 +35,6 @@
 int checkAlphaNumeric(char * string);
 
 
-
 /**
  * @brief Checks if a string contains only numeric characters.
  *
@@ -45,14 +44,12 @@ int checkAlphaNumeric(char * string);
 int checkNumber(char * string);
 
 
-
 /**
  * @brief Clears the last n lines in the terminal output.
  *
  * @param n The number of lines to clear.
  */
 void clear_last_n_lines(int n);
-
 
 
 /**
@@ -65,7 +62,6 @@ void clear_last_n_lines(int n);
  * @return The file descriptor if the file can be opened, -1 otherwise.
  */
 int checkFileOpened(char * pathname);
-
 
 
 /**
@@ -83,18 +79,17 @@ int checkFileOpened(char * pathname);
 int saveRecordsInAFile(char * filepath, char * msg, int nOfRecords, int nOfFields, int recordsLength,  const char *__restrict__ delim, const char *__restrict__  endOfRecDelim);
 
 
-
 /**
  * @brief Enables raw mode for terminal input. This function disables canonical input processing and echo.
  */
 void enable_raw_mode();
 
 
-
 /**
  * @brief Disables raw mode for terminal input, restoring default terminal behavior.
  */
 void disable_raw_mode();
+
 
 
 #endif
