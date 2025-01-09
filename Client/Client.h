@@ -6,13 +6,12 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#include "/home/tommy/ProgettoSO/Utils/ClientUtils.h" 
+#include "../Utils/ClientUtils.h" 
 
 
 // RESULTS PATH
 
-#define RESULTS_PATH "/home/tommy/ProgettoSO/Client/results/AddressBook"
-#define CHOICETMP_PATH "/home/tommy/ProgettoSO/Client/tmp/choice.txt"
+#define RESULTS_PATH "Client/results/AddressBook"
 
 
 

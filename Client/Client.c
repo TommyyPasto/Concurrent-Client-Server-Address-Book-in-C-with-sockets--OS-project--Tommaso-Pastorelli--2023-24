@@ -728,9 +728,21 @@ void sigintHandler(int signum) {
  * @return 0 on successful termination, or a error code.
  */
 int main(int argc, char *argv[]) {
+
+    if(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0){
+        printf("usage: ./Client.out <server_address> <port>\n");
+        printf("with <port> integer greater then 0 and server_address a valid ip address\n");
+        exit(EXIT_SUCCESS);
+    }
     
     char * address = (strcmp(argv[1], "localhost") == 0) ? "127.0.0.1" : argv[1];
     int port = atoi(argv[2]);
+
+    if(port == 0){
+        printf("usage: ./Client.out <server_address> <server_port> or ./Client.out -h and ./Client.out --help for help\n");
+        printf("also, <port> has to be a integer and greater then 0, and server_address has to be a valid ip address\n");
+        exit(EXIT_FAILURE);
+    }
 
     fflush(stdin);
 
@@ -794,19 +806,22 @@ int main(int argc, char *argv[]) {
         
                             printf("%s\n", nextString);
 
-                           // while (getchar() != '\n');
+                            if(data->operation == SEARCH){
+                                while (getchar() != '\n'); //here we clean the buffer since when a field or more are requested, the last ENTER remains in the buffer
+                            }
+
                             //asking if the user wants to save the results in a file
                             char c;
                             printf("Do you want to save these results in a file?[Y/n] ");
-                            scanf("%c", &c);
+                            c = getchar();//scanf("%c", &c);
                             
                             while (getchar() != '\n'); // Emptying the buffer since it happens to remain some residual input "\n"
-                                                        
+                   
                             if(c == 'Y')
                             {
-                                printf("im here\n");
+                                
                                 fflush(stdout);
-                                sleep(2);
+                                sleep(1);
                                 char * newResultsFilePath = malloc(100 * sizeof(char));
                                 sprintf(newResultsFilePath, "%s%d.txt", RESULTS_PATH, fileNumCounter);
                                 int res;

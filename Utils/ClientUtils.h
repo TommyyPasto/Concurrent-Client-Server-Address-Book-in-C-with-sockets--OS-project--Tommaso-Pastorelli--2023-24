@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 
 #define RED   "\033[1;31m"  /**< Macro for red terminal output. */
 #define GRN   "\033[1;32m"  /**< Macro for green terminal output. */

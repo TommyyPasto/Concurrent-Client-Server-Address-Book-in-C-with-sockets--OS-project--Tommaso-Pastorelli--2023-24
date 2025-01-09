@@ -209,7 +209,6 @@ int insertContact(Message * data){
     }
 
     //unlocking and closing file
-    printf("%d is unlocking file...\n", getpid());
     unlockFile(contacts, fl);
     fclose(contacts);
 
@@ -331,8 +330,6 @@ int login(Message * data){
 
 
 int checkLoginSession(TOKEN token){
-    printf("ecco il token: (length = %d)%s | (length = %d)%s\n", strlen(token), token, strlen(sessionToken), sessionToken);
-    printf("%d", strcmp(token, sessionToken));
     if(strcmp(token, sessionToken) == 0)
         return 1;
     return -1;
@@ -382,9 +379,6 @@ Message * deconstruct_Message_String(char * msg){
     
     strncpy(data->token, mesg, 32);
     data->token[TOKEN_LENGTH_] = '\0';
-    
-    printf("ecco il token: (length = %d)%s | (length = %d)%s\n", strlen(data->token), data->token, strlen(mesg), mesg);
-    fflush(stdout);
     
     return data;
 }
@@ -479,14 +473,8 @@ char * searchContacts(Message * data){
     //locking file
     struct flock * fl = lockRD(contacts, 0, EOF, F_SETLKW);
 
-    printf("1 - inizio ricerca\n");
-    fflush(stdout);
-
     //returns an array with the num of found contacts in first pos. and the contacts positions after
     int * foundContactsPosition = numberOfRecordsWithParameters(contacts, data, 53);
-
-    printf("2 - letto le posizioni: %d\n", foundContactsPosition[0]);
-    fflush(stdout);
 
     contactsList = malloc((2 + foundContactsPosition[0] * 53) * sizeof(char));
 
@@ -727,6 +715,24 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
  */
 int main(int argc, char *argv[]) {
 
+    if(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0){
+        printf("usage: ./Server.out <port> <max_clients>\n");
+        printf("with <port> and <max_clients> integers and greater then 0\n");
+        exit(EXIT_SUCCESS);
+    }
+
+    int port = atoi(argv[1]);
+    int max_clients = atoi(argv[2]);
+
+    if(port == 0 || max_clients == 0){
+        printf("usage: ./Server.out <port> <max_clients> or ./Server.out -h and ./Server.out --help for help\n");
+        printf("also, <port> and <max_clients> have to be integers and greater then 0\n");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("%d", max_clients);
+    fflush(stdout);
+
     //setting up signal handlers
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, sigintHandler);
@@ -742,18 +748,18 @@ int main(int argc, char *argv[]) {
     server_socket = socketSetUp(1);
 
     //binding process
-    client_address = binding(server_socket, SERVER_PORT);
+    client_address = binding(server_socket, port);
 
     int addrlen = sizeof(*client_address);
 
     // Listening
-    if (listen(server_socket, MAX_CLIENTS_) < 0) {
+    if (listen(server_socket, max_clients) < 0) {
         perror("listen failed");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
 
-    printf("Server listening on PORT: %d\n", SERVER_PORT);
+    printf("Server listening on PORT: %d\n", port);
 
     //waiting for clients requests
     while(1){
@@ -768,9 +774,19 @@ int main(int argc, char *argv[]) {
             close(server_socket);
             exit(EXIT_FAILURE);
         }else{
-            printf("%d ha accettato", getpid());
+
+            // Conversione dell'indirizzo IP del client in stringa
+            if (inet_ntop(AF_INET, (struct in_addr*)&(client_address->sin_addr.s_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
+                perror("IP conversion error: ");
+                close(client_socket);
+                close(server_socket);
+                exit(EXIT_FAILURE);
+            }
+
+            printf("Server accepted a connection from %d\n", client_ip);
             fflush(stdout);
-            if((connectedClients + 1) > MAX_CLIENTS_){
+
+            if((connectedClients + 1) > max_clients){
                 logAnEvent(UNSUCCESSFUL_CONNECTION_ATTEMPT, (Message *) NULL, client_ip, getCurrentTimeStr());
                 rejectConnection(client_socket);            
                 close(client_socket);
@@ -782,17 +798,9 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Conversione dell'indirizzo IP del client in stringa
-        if (inet_ntop(AF_INET, (struct in_addr*)&(client_address->sin_addr.s_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
-            perror("IP conversion error: ");
-            close(client_socket);
-            close(server_socket);
-            exit(EXIT_FAILURE);
-        }
-
         int option = 1;
         if (setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) < 0) {
-            perror("Errore in setsockopt");
+            perror("Error in setsockopt");
             fflush(stdout);
             close(server_socket);
             exit(EXIT_FAILURE);
@@ -804,11 +812,11 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        // parent process
         else if (childpid > 0)
-        { // parent process
+        {   
             //saving the pid(used for logging)
             pid = getpid();
-            printf("\n parent process: %d\n", childpid);
             close(client_socket);
         }
 
@@ -822,7 +830,7 @@ int main(int argc, char *argv[]) {
             pid = getpid();
             logAnEvent(SUCCESSFUL_CONNECTION_ATTEMPT, (Message *) NULL, client_ip, acceptTime);
 
-            printf("\n child process: %d\n", pid);
+            printf("\n child process %d created to handle client %s\n\n", pid, client_ip);
 
             close(server_socket);
             
@@ -840,7 +848,7 @@ int main(int argc, char *argv[]) {
                 
                 // returns buffers data into a proper struct
                 Message * data = deconstruct_Message_String(buffer);
-                printf("%d ha ricevuto ricevuta: %c\n", getpid(), data->operation);
+                printf("%d got request %c from client %s\n\n", getpid(), data->operation, client_ip);
                 fflush(stdout);
 
                 //if the op. is "LISTING" we have to send the num. of contacts before sending the array containing them 
@@ -848,7 +856,6 @@ int main(int argc, char *argv[]) {
                     
                     char * contactsList = searchContacts(data);
                     int32_t nContacts_uint = htonl(contactsList[0]);
-                    printf("contatti trovati: %d\n", contactsList[0]);
 
                     write(client_socket, &nContacts_uint, sizeof(nContacts_uint));
                     write(client_socket, &contactsList[1], (sizeof(char) * contactsList[0] * 53 + 1));

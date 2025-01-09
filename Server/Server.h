@@ -16,19 +16,18 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include "errno.h"
-#include "/home/tommy/ProgettoSO/Utils/ServerUtils.h"
+#include "../Utils/ServerUtils.h"
 
 
-#define MAX_CLIENTS_ 2
+#define MAX_CLIENTS_ 5
 
-#define SERVER_PORT 13001
-#define SERVER_ADDRESS "127.0.0.1"
+
 #define BUFFER_SIZE 173
 
 
-char * CONTACTS_PATH = "/home/tommy/ProgettoSO/Server/files/contatti.txt";
-char * USERS_PATH = "/home/tommy/ProgettoSO/Server/files/utenti.txt";
-char * LOG_PATH = "/home/tommy/ProgettoSO/Server/files/log.txt";
+char * CONTACTS_PATH = "Server/files/contatti.txt";
+char * USERS_PATH = "Server/files/utenti.txt";
+char * LOG_PATH = "Server/files/log.txt";
 
 
 
