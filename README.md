@@ -37,12 +37,12 @@ To compile and run this project, follow these steps:
 ## Usage
 1. Start the server:
     ```sh
-    ./server
+    ./Server.out
     ```
 
 2. Start a client:
     ```sh
-    ./client
+    ./Client.out
     ```
 
 3. Follow the on-screen instructions to perform address book operations.
