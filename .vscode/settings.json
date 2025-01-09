@@ -12,7 +12,8 @@
     "sstream": "c",
     "array": "c",
     "string_view": "c",
-    "stdlib.h": "c"
+    "stdlib.h": "c",
+    "client.h": "c"
   },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",
