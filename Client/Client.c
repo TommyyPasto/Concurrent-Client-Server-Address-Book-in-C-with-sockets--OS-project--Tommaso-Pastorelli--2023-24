@@ -37,37 +37,36 @@ TOKEN sessionTOKEN;
 /**
  * @brief Client socket file descriptor.
  */
-
 int client_sock;
+
 /**
  * @brief Login status (UI representation).  Actual login check is server-side.
  */
-
 int logged = 0; 
+
 /**
  * @brief Server address structure.
  */
-
 struct sockaddr_in serv_addr;
+
 /**
  * @brief Flag indicating first menu iteration.
  */
-
 int first = 1;
+
 /**
  * @brief Counter for file numbers.
  */
-
 int fileNumCounter = 1;
+
 /**
  * @brief Integer choice from the menu.
  */
-
 int intChoice = 0; 
 
 
 void printMenu(const char **options, int num_options, int selected, char * nextString) {
-    system("clear || cls");
+    system("clear");
     printf("*****************************************************\n");
     printf("*                                                   *\n");
     printf("*%s            WELCOME TO THE ADDRESS BOOK%s            *\n", BLU, RESET);
@@ -138,6 +137,7 @@ char parseSelected(int selected, int logged){
             case 4:
                 return 27;
         }
+        return -1;
     }
 }
 
@@ -179,7 +179,7 @@ int tryConnection(int sock, struct sockaddr_in * serv_addr){
     system("clear");
     //Connection to server
     while(1){
-        if(connect(sock, serv_addr, sizeof(*serv_addr)) < 0 || (outcome = checkTooManyClientsConnected(sock, serv_addr)) != CONNECTION_ACCEPTED) {
+        if(connect(sock, (const struct sockaddr *)serv_addr, sizeof(*serv_addr)) < 0 || (outcome = checkTooManyClientsConnected(sock)) != CONNECTION_ACCEPTED) {
             cleanInput = 1;
             printOutcome(outcome);
 
@@ -213,12 +213,12 @@ int tryConnection(int sock, struct sockaddr_in * serv_addr){
             printOutcome(outcome);
             sleep(1.5);
             return sock;
-        }
+        } 
     }
 }
     
 
-int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_addr) {
+int checkTooManyClientsConnected(int client_socket) {
     
     //receiving outcome
     int32_t outcome_uint;
@@ -230,7 +230,7 @@ int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_ad
         printf(RED SERVER_DISCONNECTED_ERROR RESET);
         close(client_socket);
         exit(-1); 
-        return;
+        //return;
     }
 
     return ntohl(outcome_uint);
@@ -238,7 +238,7 @@ int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_ad
 
 
 char * getOutcomeString(int outcome){
-    return outcome_strings[outcome];
+    return (char *)outcome_strings[outcome];
 }
 
 
@@ -306,8 +306,6 @@ Message * choose_operation(){
             //defining and taking memory space to save message datas
             Message * data;
             data = malloc(sizeof(Message));
-
-            
 
             //initializing the interface check variables
             choiceInCorrectRange = 1;
@@ -390,10 +388,8 @@ Message * choose_operation(){
                     printf(BLU"• Name: "RESET);
                     scanf("%s", name);
                     if(checkInsertedData(name, "name") == 0){
-                        
                         strcpy(data->name, name);
                     }else{
-                        
                         dataInsertedCorrectly = 0;
                         break;
                     }
@@ -545,12 +541,14 @@ Message * choose_operation(){
                 
                 case LOGIN: 
                     data->operation = LOGIN;
+                    char * username = malloc(200 * sizeof(char));
+                    char * psw = malloc(200 * sizeof(char));
 
                     //checking username
                     printf(MAG"• Username: "RESET);
-                    scanf("%s", data->username);
-                    if(checkInsertedData(data->username, "username") == 0){
-                        strcpy(data->username, data->username);
+                    scanf("%s", username);
+                    if(checkInsertedData(username, "username") == 0){
+                        strcpy(data->username, username);
                     }else{
                         dataInsertedCorrectly = 0;
                         break;
@@ -558,9 +556,9 @@ Message * choose_operation(){
 
                     //checking password
                     printf(MAG"• Password: "RESET);
-                    scanf("%s", data->psw);
-                    if(checkInsertedData(data->psw, "password") == 0){
-                        strcpy(data->psw, data->psw);
+                    scanf("%s", psw);
+                    if(checkInsertedData(psw, "password") == 0){ 
+                        strcpy(data->psw, psw);
                     }else{
                         dataInsertedCorrectly = 0;
                         break;
@@ -578,6 +576,9 @@ Message * choose_operation(){
         }
         
     }while(choiceInCorrectRange == 0 || dataInsertedCorrectly == 0); 
+
+    //it never reaches here, this is just to remove the warning
+    return NULL;
 }
 
 
@@ -712,10 +713,12 @@ int checkInsertedData(char * dataValue, char * typeOfData){
 
 
 void sigintHandler(int signum) {
-    printf("\n\n");
-    printf(YEL"               you are now exiting the program..."RESET);
-    printf("\n");
-    close(client_sock);
+    if(signum == SIGINT){
+        printf("\n\n");
+        printf(YEL"               you are now exiting the program..."RESET);
+        printf("\n");
+        close(client_sock);
+    }
     exit(0);
 }
 
@@ -746,7 +749,7 @@ int main(int argc, char *argv[]) {
 
     fflush(stdin);
 
-    system("clear || cls");
+    system("clear");
 
     signal(SIGINT, sigintHandler);
 
@@ -787,7 +790,6 @@ int main(int argc, char *argv[]) {
                 //still checking eventual reading/writing problems...
                 val = read(client_sock, &numContacts_t, sizeof(numContacts_t));
                 if(val > 0){
-
                     int numContacts = ntohl(numContacts_t);
                     int size = sizeof(char) * numContacts * 53 + 1;
                    
@@ -795,15 +797,16 @@ int main(int argc, char *argv[]) {
 
                     val = read(client_sock, buffer, size);
                     if(val > 0){
+                        
 
                         //here we print the outcome of the operation, wheter it is positive or there has been some kind of server side error during operation
                         printOutcome(buffer[0]); 
                         if(numContacts > 0){
-
+                                                                                                                                                                
                             //printing menu on terminal
                             char * nextString = malloc((57 * numContacts + 1000) * sizeof(char));
                             nextString = listContacts(&buffer[1], numContacts);
-        
+
                             printf("%s\n", nextString);
 
                             if(data->operation == SEARCH){
@@ -813,13 +816,12 @@ int main(int argc, char *argv[]) {
                             //asking if the user wants to save the results in a file
                             char c;
                             printf("Do you want to save these results in a file?[Y/n] ");
-                            c = getchar();//scanf("%c", &c);
+                            c = getchar();
                             
                             while (getchar() != '\n'); // Emptying the buffer since it happens to remain some residual input "\n"
                    
                             if(c == 'Y')
                             {
-                                
                                 fflush(stdout);
                                 sleep(1);
                                 char * newResultsFilePath = malloc(100 * sizeof(char));
@@ -856,7 +858,6 @@ int main(int argc, char *argv[]) {
             }
         }else{
 
-            //creating message 
             create_Message_String(message, data);
 
             //Sending the message to the server and checking if there has been some problem in the writing of data into the socket file
@@ -874,12 +875,13 @@ int main(int argc, char *argv[]) {
                 char outcome[33];
                 val = read(client_sock, outcome, sizeof(outcome));
                 if(val <= 0){
-                    
-                    system("clear || cls");
+                    system("clear");
                     printf(RED SERVER_DISCONNECTED_ERROR RESET);
                     tryConnection(client_sock, serv_addr);
                     continue;
                 }
+
+
                 else if(outcome[0] == POSITIVE && val > 0){
                     
                     //printing menu on terminal
@@ -904,16 +906,24 @@ int main(int argc, char *argv[]) {
                     while(getchar() != '\n');
                     intChoice = menu(logged, logged_options[logged], outcomeString);
 
-                    free(outcomeString);
+                    free(outcomeString);   
+                }
+                else{
+                    char * outcomeString = malloc(100 * sizeof(char));
+                    outcomeString[0] = '\0';
+                    strcat(outcomeString,getOutcomeString(outcome[0])); 
+                     
+                    while(getchar() != '\n');
+                    intChoice = menu(logged, logged_options[logged], outcomeString);
 
-                    
+                    free(outcomeString);
                 }
             }else{
                 //doing the same thing for other operations
                 int32_t outcome_t;
                 val = read(client_sock, &outcome_t, sizeof(outcome_t));
                 if(val <= 0){
-                    system("clear || cls");
+                    system("clear");
                     printf(RED SERVER_DISCONNECTED_ERROR RESET);
                     tryConnection(client_sock, serv_addr);
                     continue;
@@ -922,12 +932,10 @@ int main(int argc, char *argv[]) {
                     
                     //printing menu on terminal
                     if(data->operation != LOGOUT){ 
-
                         char * outcomeString = getOutcomeString(outcome); 
                         while(getchar() != '\n'); 
                         intChoice = menu(logged, logged_options[logged], outcomeString);
                     }else{
-
                         logged = 0;
                         intChoice = menu(logged, logged_options[logged], " ");
 

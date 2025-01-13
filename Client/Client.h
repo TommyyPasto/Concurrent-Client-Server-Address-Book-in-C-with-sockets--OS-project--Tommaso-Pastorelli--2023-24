@@ -32,7 +32,6 @@
 #define PASSWORD_NOT_CORRECT 6
 #define USER_NOT_FOUND 7
 #define TOO_MANY_CLIENTS_CONNECTED 8
-
 #define CONNECTION_ACCEPTED 9
 
 
@@ -320,10 +319,9 @@ void sigintHandler(int signum);
  * @brief Checks if the server sent a "too many clients connected" message.
  *
  * @param client_socket The client socket.
- * @param serv_addr The server address.
  * @return The outcome code received from the server.
  */
-int checkTooManyClientsConnected(int client_socket, struct sockaddr_in * serv_addr);
+int checkTooManyClientsConnected(int client_socket);
 
 
 /**

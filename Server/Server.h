@@ -101,45 +101,12 @@ typedef struct{
 
 
 /**
- * @brief Global pointer to the current session token.  This token is used
- * to authenticate client requests after login.  It should be initialized during the login process.
- */
-extern TOKEN * sessionToken;
-
-
-
-/**
- * @brief Sockets for Server side and new clients
- */
-extern int server_socket, client_socket;
-
-
-/**
- * @brief address of the current served client
-*/
-extern char client_ip[20]; 
-
-
-/**
- * @brief Global counter for the number of currently connected clients.
- */
-extern int connectedClients;
-
-
-/**
- * @brief pid used for logging
- */
-extern int pid;
-
-
-/**
  * @brief Sets up a socket for the server.
  *
  * @param option Socket option for `setsockopt`. Typically 1 to enable `SO_REUSEADDR`.
  * @return The file descriptor of the created socket, or a negative value on error.
  */
 int socketSetUp(int option);
-
 
 
 /**
@@ -298,12 +265,11 @@ int search_And_Set_ContactIndex(FILE * contacts, Message * data);
  * @brief Counts contacts in the address book file.
  *
  * @param file  File pointer to open file.
- * @param recordSize Size of each record in the file.
  * @return Number of contacts.
  * @pre Contacts file open in read mode.
  * @post File pointer at end of file.
  */
-int totalNumberOfRecords(FILE * file, int recordSize);
+int totalNumberOfRecords(FILE * file);
 
 
 /**

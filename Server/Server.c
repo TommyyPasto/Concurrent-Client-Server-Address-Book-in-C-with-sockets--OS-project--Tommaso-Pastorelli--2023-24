@@ -27,15 +27,15 @@
  */
 
 
-#include "Server.h"
+#include "Server.h" 
 
 
 /**
  * @brief Global pointer to the current session token.  This token is used
  * to authenticate client requests after login.  It should be initialized during the login process.
  */
-TOKEN * sessionToken;
-
+TOKEN sessionToken;
+ 
 
 /**
  * @brief Sockets for Server side and new clients
@@ -104,8 +104,10 @@ struct sockaddr_in * binding(int socket, int port){
 
 
 void sigintHandler(int signum) {
-    close(server_socket);
-    close(client_socket);
+    if(signum == SIGINT){
+        close(server_socket);
+        close(client_socket);
+    }
     exit(0);
 }
 
@@ -130,9 +132,11 @@ void sigchldHandler(int signum) {
 
 
 void sigpipeHandler(int signum) {
-    printf("CLIENT DISCONNECTED\n\n");
-    close(client_socket);
-    logAnEvent(DISCONNECTION, (Message *) NULL, client_ip, getCurrentTimeStr());
+    if(signum == SIGPIPE){
+        printf("CLIENT DISCONNECTED\n\n");
+        close(client_socket);
+        logAnEvent(DISCONNECTION, (Message *) NULL, client_ip, getCurrentTimeStr());
+    }
 }
 
 
@@ -168,7 +172,7 @@ int execute_operation(Message * data){
         return login(data);
     }
     else if(data->operation == LOGOUT){
-        logout(data->token);
+        logout(data);
         return 0;
     }
     return POSITIVE;
@@ -197,7 +201,7 @@ int insertContact(Message * data){
         int nCharWritten = fprintf(contacts, "%s %s %s\n", data->name, data->lastName, data->phoneNumber);
         
         // checking that the length of the written data corrisponds to the actual length of the string we wanted to print into the file
-        if((strlen(data->name)+strlen(data->lastName)+strlen(data->phoneNumber)+3) != nCharWritten || nCharWritten == -1){
+        if((int)(strlen(data->name)+strlen(data->lastName)+strlen(data->phoneNumber)+3) != nCharWritten || nCharWritten == -1){
             printf("error during writing phase occurred");
             outcome = ERROR_OCCURED;
         }else{
@@ -222,7 +226,6 @@ int editContact(Message * data){
     logAnEvent(EDIT, data, client_ip, getCurrentTimeStr());
 
     FILE * contacts;
-    char buffer[53];
     int outcome;
 
     contacts = fopen(CONTACTS_PATH, "r+");
@@ -286,7 +289,7 @@ int login(Message * data){
         char * convertedPsw;
         
         fgets(buffer, sizeof(buffer), users);
-        char * username = strtok(buffer, " ");
+        strtok(buffer, " ");
         pswSHA256hex = strtok(NULL, "\n");
         
         //takes space to contain the hashed(sha256) password
@@ -306,7 +309,6 @@ int login(Message * data){
             printf("\nPOSITIVE LOGIN\n\n");
                    
             //inserting the new session token into the array after checking wheter we have a limit of max logged users
-            TOKEN str = malloc(32 * sizeof(char));
             gen_token(sessionToken, TOKEN_LENGTH_);
             loginOutcome = POSITIVE;
 
@@ -373,9 +375,6 @@ Message * deconstruct_Message_String(char * msg){
     strncpy(data->psw, mesg, 20);
     
     mesg = &msg[POS_TOKEN];
-    /*  */
-
-    char * token = malloc(32 * sizeof(char));
     
     strncpy(data->token, mesg, 32);
     data->token[TOKEN_LENGTH_] = '\0';
@@ -425,31 +424,27 @@ int * numberOfRecordsWithParameters(FILE * file, Message * data, int recordSize)
     fseek(file, 0, SEEK_SET);
 
     while(fgets(buffer, sizeof(buffer), file)){
-        int found = 1;
         char * name = strtok(buffer, " ");
         char * lastName = strtok(NULL, " ");
         char * phoneNumber = strtok(NULL, "\n");
         if(strcmp(data->name, "-") != 0 && strcmp(data->name, name) != 0){
-            found = 0; 
             i++; 
             continue;      
         }
         if(strcmp(data->lastName, "-") != 0 && strcmp(data->lastName, lastName) != 0){
-            found = 0;
             i++; 
             continue;
         }
         if(strcmp(data->phoneNumber, "-") != 0 && strcmp(data->phoneNumber, phoneNumber) != 0){
-            found = 0;
             i++; 
             continue;
         }
-        if(found == 1){
-            foundContactsPosition = realloc(foundContactsPosition, (1 + (count + 1)) * sizeof(int));
-            foundContactsPosition[count + 1] = i;
-            count++;
-            i++; 
-        }
+    
+        foundContactsPosition = realloc(foundContactsPosition, (1 + (count + 1)) * sizeof(int));
+        foundContactsPosition[count + 1] = i;
+        count++;
+        i++; 
+        
     }
     foundContactsPosition[0] = count;
     return foundContactsPosition;
@@ -463,7 +458,6 @@ char * searchContacts(Message * data){
     else
         logAnEvent(SEARCH, data, client_ip, getCurrentTimeStr());
 
-    int outcome;
     char buffer[53];
     char * contactsList;
     FILE * contacts;
@@ -479,8 +473,10 @@ char * searchContacts(Message * data){
     contactsList = malloc((2 + foundContactsPosition[0] * 53) * sizeof(char));
 
     if(foundContactsPosition[0] == 0){
+        printf("no contacts found\n");
         unlockFile(contacts, fl);
         contactsList[1] = ZERO_CONTACTS_SAVED;
+        contactsList[0] = 0;
         return contactsList;
     }
 
@@ -513,8 +509,7 @@ char * searchContacts(Message * data){
 
 
 
-int totalNumberOfRecords(FILE * file, int recordSize){
-    char buffer[recordSize];
+int totalNumberOfRecords(FILE * file){
     int count = 0;
     fseek(file, 0, SEEK_SET);
     for (char c = getc(file); c != EOF; c = getc(file))
@@ -556,7 +551,7 @@ int rewriteAddressBook(Message * data){
                 //if the contact is not the same we can write it down also in the new file
                 if(strcmp(name, data->name) != 0 || strcmp(lastName, data->lastName) != 0 || strcmp(phoneNumber, data->phoneNumber) != 0){
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
-                    if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
+                    if((int)(strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
                         printf("\nerror during writing phase occurred\n");
                         fflush(stdout);
                         outcome = ERROR_OCCURED;
@@ -589,7 +584,7 @@ int rewriteAddressBook(Message * data){
         return outcome;
 
     //else if we want to edit a contact...
-    }else if(data->operation == EDIT){
+    }else{
 
         if(search_And_Set_ContactIndex(contacts, data) != -1){
             fseek(contacts, 0, SEEK_SET);
@@ -621,7 +616,7 @@ int rewriteAddressBook(Message * data){
                     }
                 }else{
                     int nCharWritten = fprintf(tmpFile, "%s %s %s\n", name, lastName, phoneNumber);
-                    if((strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
+                    if((int)(strlen(name)+strlen(lastName)+strlen(phoneNumber)+3) != nCharWritten || nCharWritten == -1){
                         printf("\nerror during writing phase occurred\n");
                         fflush(stdout);
                         outcome = ERROR_OCCURED;
@@ -689,7 +684,7 @@ int logAnEvent(int eventCode, Message * data, char * address, char * time){
             outcome = fprintf(logfile, "[%s] Client %s unsuccessful login as USER:{%s} (PID: %d)\n", time, address,  data->username, getpid());
             break;
         case LOGOUT:
-            outcome = fprintf(logfile, "[%s] Client %s logged out as USER:{%s} (PID: %d)\n", time, address,  data->username, getpid());
+            outcome = fprintf(logfile, "[%s] Client %s logged out (PID: %d)\n", time, address, getpid());
             break;
         default:
             outcome = ERROR_OCCURED;
@@ -783,7 +778,7 @@ int main(int argc, char *argv[]) {
                 exit(EXIT_FAILURE);
             }
 
-            printf("Server accepted a connection from %d\n", client_ip);
+            printf("Server accepted a connection from %s\n", client_ip);
             fflush(stdout);
 
             if((connectedClients + 1) > max_clients){
